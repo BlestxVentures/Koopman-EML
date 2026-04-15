@@ -12,7 +12,8 @@ venv/
 env/
 
 .idea/
-.vscode/
+.vscode/*
+!.vscode/settings.json
 *.swp
 *.swo
 *~
@@ -31,3 +32,18 @@ data/
 
 .DS_Store
 Thumbs.db
+
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.synctex.gz
+*.synctex(busy)
+*.toc
+*.nav
+*.snm
+*.vrb

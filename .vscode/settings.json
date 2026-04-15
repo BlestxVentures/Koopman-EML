@@ -1,0 +1,24 @@
+{
+    "latex-workshop.latex.tools": [
+        {
+            "name": "pdflatex",
+            "command": "C:/Users/live/AppData/Local/Programs/MiKTeX/miktex/bin/x64/pdflatex.exe",
+            "args": [
+                "-synctex=1",
+                "-interaction=nonstopmode",
+                "-file-line-error",
+                "%DOC%"
+            ]
+        }
+    ],
+    "latex-workshop.latex.recipes": [
+        {
+            "name": "pdflatex",
+            "tools": ["pdflatex"]
+        },
+        {
+            "name": "pdflatex x3 (for references)",
+            "tools": ["pdflatex", "pdflatex", "pdflatex"]
+        }
+    ]
+}
