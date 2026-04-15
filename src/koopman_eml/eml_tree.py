@@ -138,23 +138,49 @@ class EMLTreeVectorized(nn.Module):
 
     Packs all N trees' routing logits into contiguous tensors and evaluates
     every node at the same depth in a single batched EML call.
+
+    When ``use_complex=True``, the imaginary unit *i* is added to the
+    candidate set (grammar becomes S -> 1 | i | eml(S, S)).  If
+    ``allow_imaginary_vars=True`` as well, the products ix_0 ... ix_{n-1}
+    are also added, giving access to trig functions at depth 1 via
+    eml(ix, 1) = exp(ix) = cos(x) + i sin(x).
     """
 
-    def __init__(self, n_trees: int, depth: int, n_vars: int = 1):
+    def __init__(
+        self,
+        n_trees: int,
+        depth: int,
+        n_vars: int = 1,
+        use_complex: bool = False,
+        allow_imaginary_vars: bool = False,
+    ):
         super().__init__()
         self.n_trees = n_trees
         self.depth = depth
         self.n_vars = n_vars
+        self.use_complex = use_complex
+        self.allow_imaginary_vars = allow_imaginary_vars
         self.nodes_per_level = [2 ** (depth - 1 - l) for l in range(depth)]
+
+        n_extra = (1 if use_complex else 0) + (n_vars if allow_imaginary_vars else 0)
 
         self.level_logits = nn.ParameterList()
         for level in range(depth):
             is_leaf = level == 0
             n_nodes = self.nodes_per_level[level]
-            n_choices = 1 + n_vars + (0 if is_leaf else 1)
+            n_choices = 1 + n_extra + n_vars + (0 if is_leaf else 1)
             self.level_logits.append(
                 nn.Parameter(torch.randn(n_trees, n_nodes, n_choices, 2) * 0.1)
             )
+
+    def _n_base_candidates(self) -> int:
+        """Number of candidates before the f_child slot."""
+        return (
+            1
+            + (1 if self.use_complex else 0)
+            + self.n_vars
+            + (self.n_vars if self.allow_imaginary_vars else 0)
+        )
 
     def forward(
         self,
@@ -169,9 +195,15 @@ class EMLTreeVectorized(nn.Module):
         if x.dim() == 1:
             x = x.unsqueeze(-1)
 
+        _complex = use_complex or self.use_complex
         batch = x.shape[0]
-        device, dtype = x.device, x.dtype
-        const_one = torch.ones(batch, 1, 1, device=device, dtype=dtype)
+        device = x.device
+        cdtype = torch.cfloat if _complex else x.dtype
+
+        if _complex and not x.is_complex():
+            x = x.to(cdtype)
+
+        const_one = torch.ones(batch, 1, 1, device=device, dtype=cdtype)
         x_expanded = x.unsqueeze(1)  # [B, 1, n_vars]
 
         prev_outputs: torch.Tensor | None = None
@@ -193,12 +225,30 @@ class EMLTreeVectorized(nn.Module):
                 tau=tau, hard=False,
             ).reshape(batch, self.n_trees, n_nodes, -1)
 
-            cands_l = [const_one.expand(batch, self.n_trees, n_nodes)]
-            cands_r = [const_one.expand(batch, self.n_trees, n_nodes)]
+            if _complex:
+                left_w = left_w.to(cdtype)
+                right_w = right_w.to(cdtype)
+
+            # --- build candidate lists ---
+            shape = (batch, self.n_trees, n_nodes)
+            cands_l: list[torch.Tensor] = [const_one.expand(*shape)]
+            cands_r: list[torch.Tensor] = [const_one.expand(*shape)]
+
+            if _complex:
+                const_i = torch.full(shape, 1j, device=device, dtype=cdtype)
+                cands_l.append(const_i)
+                cands_r.append(const_i)
+
             for v in range(self.n_vars):
-                xv = x_expanded[:, :, v : v + 1].expand(batch, self.n_trees, n_nodes)
+                xv = x_expanded[:, :, v : v + 1].expand(*shape)
                 cands_l.append(xv)
                 cands_r.append(xv)
+
+            if self.allow_imaginary_vars:
+                for v in range(self.n_vars):
+                    ixv = 1j * x_expanded[:, :, v : v + 1].expand(*shape)
+                    cands_l.append(ixv)
+                    cands_r.append(ixv)
 
             if level > 0 and prev_outputs is not None:
                 cands_l.append(prev_outputs[:, :, 0::2])
@@ -207,10 +257,19 @@ class EMLTreeVectorized(nn.Module):
             eml_x = (torch.stack(cands_l, dim=-1) * left_w).sum(dim=-1)
             eml_y = (torch.stack(cands_r, dim=-1) * right_w).sum(dim=-1)
 
-            eml_x = eml_x.clamp(-clamp_input, clamp_input)
-            if not use_complex:
+            if _complex:
+                eml_x = torch.complex(
+                    eml_x.real.clamp(-clamp_input, clamp_input),
+                    eml_x.imag.clamp(-clamp_input, clamp_input),
+                )
+            else:
+                eml_x = eml_x.clamp(-clamp_input, clamp_input)
                 eml_y = eml_y.clamp(min=1e-30)
 
-            prev_outputs = eml(eml_x, eml_y, exp_order=exp_order, ln_order=ln_order, use_complex=use_complex)
+            prev_outputs = eml(
+                eml_x, eml_y,
+                exp_order=exp_order, ln_order=ln_order,
+                use_complex=_complex,
+            )
 
         return prev_outputs.squeeze(-1)

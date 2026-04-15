@@ -61,7 +61,14 @@ def train_koopman_eml(
                 if verbose:
                     print(f"\n[Epoch {epoch}] Snapping EML tree weights...")
                 _snap_dictionary(model)
-                optimizer = torch.optim.Adam([model.K, *model.C.parameters()], lr=lr * 0.1)
+                finetune_params: list[torch.nn.Parameter] = [model.K]
+                if hasattr(model, "C"):
+                    finetune_params.extend(model.C.parameters())
+                if hasattr(model, "C_re"):
+                    finetune_params.extend(model.C_re.parameters())
+                if hasattr(model, "C_im"):
+                    finetune_params.extend(model.C_im.parameters())
+                optimizer = torch.optim.Adam(finetune_params, lr=lr * 0.1)
 
         # --- Mini-batch or full-batch ---
         if batch_size is not None and batch_size < n_samples:

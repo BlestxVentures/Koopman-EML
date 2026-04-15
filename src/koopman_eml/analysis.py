@@ -32,11 +32,23 @@ def koopman_eigendecomposition(model: KoopmanEML) -> dict:
     }
 
 
+def _build_candidate_labels(dict_mod) -> list[str]:
+    """Build ordered candidate labels matching the logit dimension."""
+    n_vars = dict_mod.n_vars
+    labels = ["1"]
+    if getattr(dict_mod, "use_complex", False):
+        labels.append("i")
+    labels.extend(f"x{i}" for i in range(n_vars))
+    if getattr(dict_mod, "allow_imaginary_vars", False):
+        labels.extend(f"i*x{i}" for i in range(n_vars))
+    return labels
+
+
 def extract_eml_formulas(model: KoopmanEML) -> list[str]:
     """Read out the symbolic EML formula for each observable after snapping."""
     dict_mod = model.dictionary
-    n_vars = dict_mod.n_vars
-    var_names = [f"x{i}" for i in range(n_vars)]
+    base_labels = _build_candidate_labels(dict_mod)
+    n_base = len(base_labels)
     formulas: list[str] = []
 
     for tree_idx in range(dict_mod.n_trees):
@@ -52,12 +64,10 @@ def extract_eml_formulas(model: KoopmanEML) -> list[str]:
                 right_idx = logits[tree_idx, node_idx, :, 1].argmax().item()
 
                 def _resolve(idx: int, node_i: int) -> str:
-                    if idx == 0:
-                        return "1"
-                    if idx <= n_vars:
-                        return var_names[idx - 1]
+                    if idx < n_base:
+                        return base_labels[idx]
                     if prev_exprs is not None:
-                        child_i = 2 * node_i + (0 if idx == n_vars + 1 else 1)
+                        child_i = 2 * node_i + (idx - n_base)
                         if child_i < len(prev_exprs):
                             return prev_exprs[child_i]
                     return "?"
@@ -106,7 +116,8 @@ def prediction_rollout(
             x_hat = model.reconstruct(g)
             trajectory.append(x_hat)
 
-    return torch.cat(trajectory, dim=0).cpu()
+    result = torch.cat(trajectory, dim=0).cpu()
+    return result.real if result.is_complex() else result
 
 
 def compute_metrics(
