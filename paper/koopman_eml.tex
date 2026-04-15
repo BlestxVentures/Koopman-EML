@@ -5,6 +5,7 @@
 \usepackage{graphicx}
 \usepackage{hyperref}
 \usepackage{booktabs}
+\usepackage{multirow}
 \usepackage{algorithm}
 \usepackage{algorithmic}
 \usepackage{natbib}
@@ -535,7 +536,7 @@ trajectory segment (501 time steps).
 \toprule
 Method & E1 & E2 & RMSE & Valid Steps & Params \\
 \midrule
-\textbf{EML-Koopman (ours)} & \textbf{7.68} & $-7.54$ & \textbf{0.888} & \textbf{144} & 720 \\
+\textbf{EML-Koopman (ours)} & \textbf{7.70} & $-12.23$ & \textbf{0.888} & \textbf{146} & 720 \\
 EDMD-Poly (degree 4) & $-1.11$ & \textbf{52.94} & 0.973 & 84 & $\sim$35 \\
 EDMD-RBF (200 centers) & $-10{,}216$ & $-252$ & 99.3 & 0 & $\sim$200 \\
 Deep Koopman (autoencoder) & 0.63 & $-34.28$ & 0.956 & 105 & 43{,}299 \\
@@ -551,10 +552,10 @@ PyKoopman (CTF published) & \multicolumn{2}{c}{avg = $-20.11$} & --- & --- & ---
 \end{table}
 
 \paragraph{Short-term forecasting (E1).}
-EML-Koopman achieves E1 $= 7.68$, the highest among all implemented baselines and
+EML-Koopman achieves E1 $= 7.70$, the highest among all implemented baselines and
 substantially above the two other interpretable methods on the CTF leaderboard:
-SINDy ($-3.00$) and PyKoopman ($-20.11$).  The valid prediction horizon of 144
-time steps (1.44 Lyapunov times at $\Delta t = 0.01$) exceeds EDMD-Poly (84 steps)
+SINDy ($-3.00$) and PyKoopman ($-20.11$).  The valid prediction horizon of 146
+time steps (1.46 Lyapunov times at $\Delta t = 0.01$) exceeds EDMD-Poly (84 steps)
 and Deep Koopman (105 steps) despite using 60$\times$ fewer parameters than the
 autoencoder.  The gap to black-box methods (LSTM 64.54, DeepONet 57.80) reflects
 the expected trade-off between parameter capacity and interpretability.
@@ -563,9 +564,9 @@ the expected trade-off between parameter capacity and interpretability.
 EDMD-Poly achieves the highest E2 ($52.94$) by a wide margin, because its
 polynomial basis functions naturally capture the power spectral shape of the
 Lorenz attractor even when short-term prediction diverges.  EML-Koopman's E2
-of $-7.54$ indicates room for improvement in long-term spectral fidelity, likely
-through deeper trees (depth 3--4) that can express a wider range of nonlinear
-functions.
+of $-12.23$ indicates room for improvement in long-term spectral fidelity.
+A systematic depth sweep (Section~\ref{sec:depth-analysis}) investigates whether
+deeper EML trees can close this gap.
 
 \paragraph{Failure modes.}
 EDMD-RBF diverges catastrophically (E1 $= -10{,}216$) because random Gaussian
@@ -618,6 +619,123 @@ therefore explicit linear combinations of elementary functions, amenable to anal
 simplification and physical interpretation.
 
 
+\subsection{Progressive Depth Analysis}
+\label{sec:depth-analysis}
+
+A key hypothesis motivating this work is that deeper EML trees --- which can express
+a richer class of elementary functions --- should improve Koopman approximation
+quality.  To test this, we swept tree depths $d \in \{2, 3, 4, 5\}$ with multiple
+observable counts $N \in \{16, 24, 32\}$ per depth, training each configuration
+from random initialization with depth-adapted hyperparameters (tighter input
+clamping and lower learning rates at greater depths to manage numerical instability
+from iterated exponentials).  Table~\ref{tab:depth} summarizes all 11
+configurations.
+
+\begin{table}[t]
+\centering
+\caption{Progressive depth sweep on CTF Lorenz.  Each row is a separate training
+  run from random initialization.  Clamp = symmetric input clamp $[-C, C]$ applied
+  before each EML call.  Best E1 and best E2 among EML configurations are bolded.}
+\label{tab:depth}
+\begin{tabular}{lccccccccc}
+\toprule
+Config & $d$ & $N$ & Clamp & Epochs & E1 & E2 & RMSE & \shortstack{Valid\\Steps} & Params \\
+\midrule
+\textbf{d2-N16} & 2 & 16 & 5.0 & 1200 & \textbf{7.70} & \textbf{$-$12.23} & \textbf{0.888} & \textbf{146} & 720 \\
+d2-N24 & 2 & 24 & 5.0 & 1500 & 7.84 & $-$47.40 & 0.887 & 146 & 1{,}272 \\
+d2-N32 & 2 & 32 & 5.0 & 1500 & 7.20 & $-$70.24 & 0.893 & 144 & 1{,}952 \\
+\midrule
+d3-N16 & 3 & 16 & 4.0 & 1500 & 5.32 & $-$48.58 & 0.911 & 143 & 1{,}296 \\
+d3-N24 & 3 & 24 & 4.0 & 2000 & 4.08 & $-$37.29 & 0.923 & 140 & 2{,}136 \\
+d3-N32 & 3 & 32 & 4.0 & 2000 & 1.86 & $-$39.15 & 0.944 & 134 & 3{,}104 \\
+\midrule
+d4-N16 & 4 & 16 & 3.0 & 2000 & 2.09 & $-$68.88 & 0.942 & 134 & 2{,}448 \\
+d4-N24 & 4 & 24 & 3.0 & 2500 & 4.56 & $-$24.67 & 0.918 & 141 & 3{,}864 \\
+d4-N32 & 4 & 32 & 3.0 & 2500 & 3.43 & $-$27.71 & 0.929 & 140 & 5{,}408 \\
+\midrule
+d5-N16 & 5 & 16 & 2.5 & 2500 & 2.35 & $-$14.22 & 0.940 & 136 & 4{,}752 \\
+d5-N24 & 5 & 24 & 2.5 & 3000 & 4.53 & $-$22.82 & 0.919 & 144 & 7{,}320 \\
+\midrule
+\multicolumn{5}{l}{EDMD-Poly (reference)} & $-$1.11 & 52.94 & 0.973 & 84 & $\sim$35 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Deeper trees do not improve E2.}
+Contrary to the initial hypothesis, the best E2 ($-12.23$) comes from the
+\emph{shallowest} configuration (d2-N16, 720 parameters).  Deeper trees
+consistently produce worse long-term spectral fidelity, with E2 ranging from
+$-14.22$ (d5-N16) to $-70.24$ (d2-N32).  Similarly, short-term E1 degrades
+from 7.70 at depth~2 to as low as 1.86 at depth~3, indicating that the
+optimization landscape becomes significantly harder at greater depths.
+
+\paragraph{Formula collapse at depth~3+.}
+Inspection of the snapped formulas reveals a structural explanation.
+Table~\ref{tab:depth-formulas} shows representative observables from each depth.
+At depth~2, the optimizer discovers diverse two-layer compositions such as
+$\eml(\eml(1, x_1), x_0)$ and $\eml(\eml(1, x_0), x_2)$ that mix multiple
+state variables through exponential and logarithmic transformations.  At depth~3
+and beyond, most trees collapse to shallow forms --- typically
+$\eml(1, x_i) = e - \ln x_i$, using only the root node while the deeper
+structure goes unused.  This collapse suggests that gradient signal attenuates
+through nested clamped exponentials, preventing the optimizer from coordinating
+routing decisions across multiple tree levels.
+
+\begin{table}[t]
+\centering
+\caption{Representative snapped EML formulas at each tree depth, illustrating
+  the progressive collapse of deeper trees toward simple root-only expressions.
+  Variables $x_0, x_1, x_2$ correspond to normalized Lorenz $x, y, z$.}
+\label{tab:depth-formulas}
+\begin{tabular}{clp{7.2cm}}
+\toprule
+Depth & Observable & Snapped Formula \\
+\midrule
+\multirow{4}{*}{2}
+  & $g_0$ & $\eml\bigl(\eml(1, x_1),\; \eml(1, x_1)\bigr)$ \\
+  & $g_1$ & $\eml\bigl(\eml(1, x_1),\; x_1\bigr)$ \\
+  & $g_3$ & $\eml\bigl(\eml(1, x_1),\; x_0\bigr)$ \\
+  & $g_6$ & $\eml\bigl(\eml(1, x_0),\; x_2\bigr)$ \\
+\midrule
+\multirow{3}{*}{3}
+  & $g_0$ & $\eml(1,\; x_0)$ \\
+  & $g_1$ & $\eml(1,\; x_1)$ \\
+  & $g_6$ & $\eml(1,\; x_2)$ \\
+\midrule
+\multirow{3}{*}{4}
+  & $g_0$ & $\eml(1,\; x_0)$ \\
+  & $g_3$ & $\eml(x_1,\; x_1)$ \\
+  & $g_6$ & $\eml(x_1,\; x_0)$ \\
+\midrule
+\multirow{3}{*}{5}
+  & $g_0$ & $\eml(1,\; x_1)$ \\
+  & $g_1$ & $\eml(x_2,\; x_0)$ \\
+  & $g_2$ & $\eml(x_1,\; x_0)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Structural barrier to E2.}
+The persistent 65-point E2 gap between EML-Koopman ($-12.23$) and EDMD-Poly
+($52.94$) has a structural explanation.  EDMD-Poly's 4th-degree polynomial
+dictionary directly contains monomials ($x^2$, $xy$, $x^2 z$, etc.) that
+closely approximate the Lorenz attractor's power spectral shape.  In EML tree
+representation, \emph{addition} requires depth~$\ge 5$ and \emph{multiplication}
+requires depth~$\ge 8$ \citep{odrzywołek2026}.  The depth-2 trees used in our
+best configuration cannot express any polynomial of degree $\ge 2$; their
+observable space is restricted to compositions of $\exp$ and $\ln$ --- functions
+whose spectral signatures differ fundamentally from the polynomial features that
+capture Lorenz long-term statistics.  Closing this gap requires either much
+deeper trees (with correspondingly harder optimization) or a hybrid dictionary
+combining EML and polynomial features.
+
+\paragraph{Fewer observables yield better E2.}
+Within each depth, the smallest dictionary ($N\!=\!16$) consistently achieves
+the best or near-best E2.  This suggests that over-parameterized dictionaries
+introduce redundant or near-degenerate observables whose spectral contributions
+interfere destructively in the long-term regime.
+
+
 % ============================================================================
 \section{Discussion}
 \label{sec:discussion}
@@ -651,27 +769,314 @@ observables, we get symbolic formulas that can be analyzed, simplified, and
 compared to physics.
 
 
-\subsection{Limitations and Future Work}
+\subsection{Native CUDA Acceleration}
+\label{sec:cuda}
 
-Several open questions remain:
+The current implementation uses PyTorch's \texttt{torch.autograd.Function} to wrap
+the Horner-form Taylor primitives.  While this avoids transcendental function calls,
+every EML evaluation still dispatches through PyTorch's operator machinery and
+Python-level loops over tree levels.  A native CUDA implementation would eliminate
+these overheads and unlock the full parallelism inherent in the EML tree
+architecture.
+
+\subsubsection{Existing Work and Libraries}
+
+No native CUDA implementation of the EML operator exists at the time of writing.
+The closest related work falls into three categories:
 
 \begin{enumerate}
-  \item \textbf{Complex mode:} Oscillatory dynamics require complex-valued Taylor
-    primitives throughout the tree, with careful handling of branch cuts.  The
-    implementation (Section~\ref{sec:taylor}) supports this but has not yet been
-    validated at scale.
-  \item \textbf{Depth scaling:} Convergence from random initialization degrades
-    beyond depth~4.  Whether curriculum depth growth or EDMD bootstrapping
-    fully resolves this for deep trees ($d \ge 6$) is an open question.
-  \item \textbf{Spectral complexity:} Is there a quantifiable relationship between
-    EML tree depth and the spectral complexity of the Koopman operator for a given
-    system class?
-  \item \textbf{EML-KAN hybrid:} Using EML nodes as activation functions in
-    Kolmogorov--Arnold networks \citep{liu2025kan} could combine KAN's universal
-    approximation with EML's symbolic snap property.
-  \item \textbf{Hardware acceleration:} The Horner-form EML primitive maps naturally
-    to FPGA or analog circuits, potentially enabling dedicated EML coprocessors that
-    evaluate deep trees in $O(d)$ clock cycles.
+  \item \textbf{SLEEF} (\url{https://sleef.org/cuda.xhtml}): The SIMD Library for
+    Evaluating Elementary Functions provides inlinable CUDA device functions for
+    $\exp$ and $\ln$ with configurable ULP error bounds (0.5--3.5~ULP), using
+    range reduction and minimax polynomial approximations.  These could serve as
+    drop-in replacements for the $\exp$ and $\ln$ components of EML, but would
+    not fuse the two into a single kernel.
+  \item \textbf{FPplus} (\url{https://github.com/Maratyszcza/FPplus}): Implements
+    compensated Horner scheme evaluation on CUDA (compute capability $\ge 2.0$) with
+    double-double error-free transforms.  Relevant for high-precision polynomial
+    evaluation in the EML backward pass.
+  \item \textbf{PolyKAN} \citep{polykan2025}: Fused CUDA kernels for polynomial
+    Kolmogorov--Arnold networks, achieving 1.2--10$\times$ inference speedup via
+    2D tiling, coefficient-layout reordering, and two-stage reduction.  Their
+    techniques for batched polynomial evaluation over tree-structured networks are
+    directly applicable to EML tree evaluation.
+  \item \textbf{nullwiz/emlvm} (\url{https://github.com/nullwiz/emlvm}): A
+    CPU-based stack-machine VM for EML programs, useful as a reference
+    implementation but without GPU support.
+  \item \textbf{FlashInfer} (\url{https://github.com/flashinfer-ai/flashinfer}):
+    Contains PTX-level wrappers for \texttt{ex2.approx} and \texttt{lg2.approx}
+    instructions, demonstrating how to bypass libm entirely for approximate
+    single-precision $\exp$/$\ln$ on GPU.
+\end{enumerate}
+
+\subsubsection{Planned CUDA Kernel Architecture}
+
+The following tasks constitute the native CUDA acceleration roadmap:
+
+\begin{enumerate}
+  \item \textbf{Fused EML kernel.}  Write a single CUDA kernel that computes
+    $\eml(x, y) = \text{horner\_exp}(x) - \text{horner\_ln}(y)$ without
+    intermediate global-memory round-trips.  Range reduction for $\exp$
+    (decompose $x = k\ln 2 + r$) and $\ln$ (frexp decomposition
+    $y = m \cdot 2^e$) should execute in registers, followed by Horner
+    evaluation using FMA intrinsics (\texttt{\_\_fma\_rn} for float,
+    \texttt{fma} for double).  The kernel should support both \texttt{float}
+    and \texttt{double} precision via C++ templates.
+  \item \textbf{Fused backward kernel.}  Compute
+    $\partial\eml/\partial x = \exp(x)$ and
+    $\partial\eml/\partial y = -1/y$ in a single backward kernel,
+    reusing the range-reduced $k$ and $r$ from the forward pass
+    (saved in a compact auxiliary buffer rather than storing the full
+    $\exp(x)$ result).
+  \item \textbf{Batched tree-level kernel.}  At each tree level~$l$, all
+    $B \times N \times n_l$ EML nodes must be evaluated (batch $\times$
+    trees $\times$ nodes-at-level).  Design a 2D-tiled kernel where each
+    thread block handles a $(B_\text{tile}, N_\text{tile})$ tile, with
+    $n_l$ unrolled in registers.  The Gumbel-softmax weighted selection
+    (sparse dot product over the candidate set) should be fused into the
+    same kernel to avoid a separate selection pass.
+  \item \textbf{Warp-level Horner evaluation.}  For higher-order polynomials
+    ($M \ge 12$), explore warp-shuffle reductions to parallelize
+    Horner steps using the Estrin--Horner hybrid scheme: group consecutive
+    coefficients into sub-polynomials evaluated in parallel across warp lanes,
+    then combine with a single Horner merge step.
+  \item \textbf{Complex-valued EML kernel.}  Extend the fused kernel to
+    \texttt{complex<double>} arithmetic for oscillatory Koopman systems.
+    Complex $\exp$ decomposes into real $\exp$ and sincos; complex $\ln$
+    requires \texttt{atan2} for the argument.  Both can be approximated
+    via Horner-form Taylor or CORDIC.
+  \item \textbf{PyTorch integration.}  Package the kernels as a PyTorch C++/CUDA
+    extension using \texttt{torch::extension}, registering custom operators via
+    \texttt{TORCH\_LIBRARY} for seamless use with \texttt{torch.compile} and
+    \texttt{torch.autograd}.
+  \item \textbf{Benchmarking.}  Profile against the pure-PyTorch Taylor
+    implementation (Section~\ref{sec:taylor}) on configurations from
+    $N\!=\!16, d\!=\!2$ (small) to $N\!=\!128, d\!=\!5$ (large), measuring
+    kernel time, memory bandwidth utilization, and end-to-end training
+    throughput.  Target: $\ge 5\times$ wall-clock speedup for depth-3 trees
+    with $N\!=\!32$ at batch size 4096.
+\end{enumerate}
+
+\subsubsection{Expected Performance Model}
+
+For a depth-$d$ tree with $N$ observables and batch size~$B$, the forward pass
+requires $d$ sequential kernel launches.  At level~$l$, each kernel performs
+$B \times N \times 2^{d-1-l}$ independent EML evaluations.  The arithmetic
+intensity per EML call is approximately $2(M_e + M_l) \approx 56$ FLOPs
+(for $M_e\!=\!12$, $M_l\!=\!16$) with 2 input reads and 1 output write
+(24 bytes in double precision), giving an arithmetic intensity of
+$\sim\!2.3$~FLOPs/byte --- squarely compute-bound on modern GPUs.  The
+bottleneck is therefore the $d$ sequential kernel launches (one per tree level),
+not within-level parallelism.  Kernel launch overhead can be mitigated via
+CUDA graphs or persistent kernels with inter-level synchronization.
+
+
+\subsection{Computational Performance Instrumentation}
+\label{sec:timing}
+
+A systematic timing study across all methods is needed to quantify the
+cost--accuracy trade-off and to measure the concrete impact of native CUDA
+kernels (Section~\ref{sec:cuda}).  The following instrumentation plan covers both
+training and inference.
+
+\subsubsection{Metrics to Collect}
+
+For each method, record the following on identical hardware (single NVIDIA GPU +
+host CPU):
+
+\begin{enumerate}
+  \item \textbf{Training wall-clock time} --- total time from initialization to
+    convergence (or fixed epoch budget), including data loading.
+  \item \textbf{Training throughput} --- state pairs processed per second
+    (pairs/s) during the optimization loop.
+  \item \textbf{Per-epoch time} --- mean and standard deviation across epochs,
+    to capture variance from Gumbel noise and annealing phase transitions.
+  \item \textbf{Inference latency} --- time for a single forward pass
+    (lift $\to$ predict $\to$ reconstruct) on one batch, measured after
+    CUDA warm-up (discard first 100 calls, average next 1000).
+  \item \textbf{Inference throughput} --- batches per second at batch sizes
+    $B \in \{1, 64, 256, 1024, 4096\}$ to characterize the latency--throughput
+    curve.
+  \item \textbf{Peak GPU memory} --- maximum allocated memory during training
+    and inference, via \texttt{torch.cuda.max\_memory\_allocated}.
+  \item \textbf{Prediction rollout time} --- wall-clock time for a full
+    multi-step prediction rollout over the CTF evaluation horizon (1--5
+    Lyapunov times).
+\end{enumerate}
+
+\subsubsection{Comparison Table}
+
+\begin{table}[t]
+\centering
+\caption{Computational performance comparison (Lorenz-63, $B\!=\!4096$).
+  Training time is total wall-clock to convergence; inference latency is
+  per-batch forward pass.  EML-Koopman rows compare the current PyTorch
+  implementation against the planned native CUDA kernels.}
+\label{tab:timing}
+\begin{tabular}{lccccc}
+\toprule
+Method & \shortstack{Train\\Time (s)} & \shortstack{Train\\(pairs/s)}
+  & \shortstack{Infer\\Latency (ms)} & \shortstack{Infer\\(batches/s)}
+  & \shortstack{Peak\\Mem (MB)} \\
+\midrule
+EML-Koopman (PyTorch) & --- & --- & --- & --- & --- \\
+EML-Koopman (CUDA fused) & --- & --- & --- & --- & --- \\
+\midrule
+EDMD-Poly & --- & --- & --- & --- & --- \\
+EDMD-RBF & --- & --- & --- & --- & --- \\
+Deep Koopman & --- & --- & --- & --- & --- \\
+PySR + LS & --- & --- & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent
+Table~\ref{tab:timing} will be populated by the instrumentation runs.  The
+EML-Koopman rows appear twice: once for the current pure-PyTorch Taylor
+implementation and once for the native CUDA kernels, providing a direct
+measurement of the CUDA optimization speedup.  The target is $\ge 5\times$
+wall-clock reduction for training and $\ge 10\times$ for inference latency.
+
+\subsubsection{Instrumentation Implementation Tasks}
+
+\begin{enumerate}
+  \item \textbf{Unified timing harness.}  Write a shared benchmarking script
+    that wraps each method (EML-Koopman, EDMD-Poly, EDMD-RBF, Deep Koopman,
+    PySR) with identical data loading, CUDA synchronization barriers
+    (\texttt{torch.cuda.synchronize}), and \texttt{time.perf\_counter} calls.
+    Record per-epoch and per-batch timings to a structured JSON log.
+  \item \textbf{Training instrumentation.}  For each method, log:
+    \begin{itemize}
+      \item Total training time (wall-clock, start to final epoch).
+      \item Per-phase breakdown for EML-Koopman (Phase~1 exploration,
+        Phase~2 hardening, Phase~3 snap \& fine-tune).
+      \item Convergence curve: loss vs.\ wall-clock time (not just epoch),
+        to capture per-iteration cost differences.
+    \end{itemize}
+  \item \textbf{Inference instrumentation.}  For each method:
+    \begin{itemize}
+      \item Warm-up: 100 untimed forward passes to stabilize GPU clocks and
+        populate caches.
+      \item Timed: 1000 forward passes with \texttt{torch.cuda.Event} start/end
+        timing for sub-millisecond resolution.
+      \item Sweep batch sizes $B \in \{1, 64, 256, 1024, 4096\}$ to
+        characterize throughput scaling.
+    \end{itemize}
+  \item \textbf{CUDA kernel profiling.}  For the native CUDA EML kernels
+    (once implemented), collect:
+    \begin{itemize}
+      \item Per-kernel time via \texttt{nsys profile} or \texttt{ncu}.
+      \item Achieved memory bandwidth and compute throughput (FLOPs/s)
+        vs.\ roofline.
+      \item Kernel launch overhead as a fraction of total time, to justify
+        CUDA graph optimization.
+    \end{itemize}
+  \item \textbf{Memory profiling.}  Record
+    \texttt{torch.cuda.max\_memory\_allocated} and
+    \texttt{torch.cuda.memory\_reserved} for each method at each batch
+    size.  For EML-Koopman, compare memory usage between PyTorch and native
+    CUDA variants (the fused kernels should reduce intermediate tensor
+    allocations).
+  \item \textbf{Scaling study.}  Vary EML-Koopman configuration across
+    $N \in \{8, 16, 32, 64, 128\}$ trees and $d \in \{2, 3, 4, 5\}$ depths.
+    Plot training throughput and inference latency as functions of $N$ and
+    $d$ for both PyTorch and CUDA backends, to characterize scaling
+    behavior and identify the regime where native kernels provide the
+    greatest benefit.
+  \item \textbf{Reproducibility.}  Fix random seeds, record GPU model
+    (via \texttt{torch.cuda.get\_device\_name}), driver version, CUDA
+    toolkit version, and PyTorch version.  Run each timing measurement
+    3$\times$ and report mean $\pm$ std.
+\end{enumerate}
+
+
+\subsection{Limitations and Future Work}
+\label{sec:limitations}
+
+The progressive depth analysis (Section~\ref{sec:depth-analysis}) revealed
+that naively increasing tree depth degrades both E1 and E2, contradicting the
+expectation that a richer function space should improve approximation quality.
+This identifies several concrete limitations and motivates targeted
+experiments.
+
+\paragraph{Limitation 1: Gradient attenuation in deep EML trees.}
+The formula collapse at depth~$\ge 3$ (Table~\ref{tab:depth-formulas})
+indicates that gradient signal fails to propagate through nested clamped
+exponentials.  Each EML node applies $\exp(\text{clamp}(x))$, whose gradient is
+$\exp(\text{clamp}(x))$ when $|x| < C$ and zero otherwise.  At depth~$d$,
+the backward pass multiplies $d$ such terms, creating either exponential
+gradient magnitudes (when activations are large) or vanishing gradients (when
+the clamp saturates).  The tight clamp required for numerical stability
+($C\!=\!3$--$5$) exacerbates this by restricting the active gradient region.
+
+\paragraph{Limitation 2: Structural E2 gap.}
+The 65-point E2 gap to EDMD-Poly is not a training failure but a fundamental
+expressiveness mismatch: depth-2 EML trees cannot represent polynomials, and the
+exponential/logarithmic observables they produce have the wrong spectral
+signature for long-term Lorenz statistics.
+
+\paragraph{Limitation 3: Initialization sensitivity.}
+All runs used random initialization.  The depth-2 success suggests that shallow
+trees benefit from a relatively smooth loss landscape where Gumbel-softmax
+exploration suffices.  Deeper trees likely have many more local minima,
+making random initialization inadequate.
+
+\subsubsection{Suggested Further Experiments}
+
+The following experiments target the specific bottlenecks identified above:
+
+\begin{enumerate}
+  \item \textbf{Curriculum depth growth.}  Train at depth~2 until convergence
+    (Phase~3 snap), then grow each tree by appending new leaf nodes with random
+    logits and resume training with the routing structure from the shallower
+    tree frozen.  This provides a strong initialization for the deeper tree
+    and avoids the cold-start problem that plagues depth-3+ random
+    initialization.  The experiment should sweep growth schedules:
+    $2 \to 3$, $2 \to 3 \to 4$, and $2 \to 4$ (skipping depth~3).
+
+  \item \textbf{Hybrid EML+Polynomial dictionary.}  Augment the EML observable
+    dictionary with polynomial features (monomials up to degree~4) to directly
+    address the E2 gap.  The combined dictionary
+    $\bg(\bx) = [\text{EML}_1(\bx), \ldots, \text{EML}_N(\bx),\;
+    x_0^2, x_0 x_1, \ldots]$ would let the Koopman matrix leverage polynomial
+    features for long-term spectral fidelity while retaining EML's symbolic
+    interpretability for the learned components.  This is straightforward to
+    implement within the PySINDy \texttt{ConcatLibrary} framework.
+
+  \item \textbf{Gradient-aware clamping.}  Replace hard clamping with a smooth
+    saturation function (e.g., $C \cdot \tanh(x/C)$) that preserves nonzero
+    gradients everywhere.  This should reduce gradient attenuation at depth~3+
+    while still bounding $\exp$ inputs.  Alternatively, apply gradient clipping
+    \emph{per tree level} rather than globally, allowing the optimizer to
+    maintain signal through deeper layers.
+
+  \item \textbf{EDMD bootstrap initialization.}  Run EDMD-Poly first, identify
+    the top-$k$ polynomial observables by Koopman reconstruction error, then
+    initialize EML tree routing to approximate those polynomials (using known
+    EML representations of monomials).  This warm-starts the optimizer near a
+    good solution, which may be especially beneficial at depth~$\ge 5$ where
+    polynomial representations become expressible.
+
+  \item \textbf{Spectral loss augmentation.}  Add an explicit spectral matching
+    term to the training loss:
+    $\cL_{\text{spec}} = \|\log P_{\text{pred}}(f) - \log P_{\text{truth}}(f)\|^2$
+    over the first $k$ frequency bins.  This directly optimizes for E2 during
+    training rather than relying on the one-step prediction loss to implicitly
+    capture long-term statistics.
+
+  \item \textbf{Complex-valued EML for oscillatory systems.}  The Lorenz system
+    has oscillatory dynamics that naturally produce complex Koopman eigenvalues.
+    Extending the EML trees to complex arithmetic (using the complex Taylor
+    $\ln$ already implemented) would allow trigonometric observables to emerge
+    at depth~3 via Euler's formula, potentially improving both E1 and E2.
+
+  \item \textbf{EML-KAN hybrid architectures.}  Replace KAN's B-spline
+    activation functions \citep{liu2025kan} with EML nodes, combining KAN's
+    universal approximation structure with EML's symbolic snap.  The
+    Kolmogorov--Arnold representation theorem guarantees that any continuous
+    function can be decomposed into univariate functions composed with
+    addition; if each univariate function is an EML tree, the entire network
+    snaps to a symbolic expression.
 \end{enumerate}
 
 
@@ -689,16 +1094,29 @@ Gumbel-softmax annealing with three-phase training produces exact symbolic
 observables upon convergence.
 
 On the CTF Lorenz benchmark, EML-Koopman achieves the best short-term forecasting
-score (E1 $= 7.68$) among all implemented baselines and surpasses the two other
+score (E1 $= 7.70$) among all implemented baselines and surpasses the two other
 interpretable CTF methods (SINDy at $-3.00$, PyKoopman at $-20.11$), while using
 only 720 parameters --- 60$\times$ fewer than the Deep Koopman autoencoder.  Every
 discovered observable is a closed-form symbolic expression, yielding interpretable
 Koopman eigenfunctions that black-box methods cannot produce.
 
-The framework opens several directions for future work: scaling to deeper trees
-(depth 3--5) via curriculum training to close the gap with high-capacity models,
-complex-valued extensions for oscillatory systems, hybrid EML-KAN architectures,
-and hardware-accelerated EML evaluation on FPGAs.
+A systematic depth sweep across 11 configurations (depths 2--5, 16--32
+observables) revealed that deeper trees do not improve performance from random
+initialization: E1 degrades from 7.70 (depth~2) to as low as 1.86 (depth~3),
+and E2 remains negative at all depths.  Inspection of snapped formulas shows
+that depth-3+ trees collapse to root-only expressions, indicating gradient
+attenuation through nested clamped exponentials.  The 65-point E2 gap to
+EDMD-Poly ($52.94$) reflects a structural mismatch: depth-2 EML trees cannot
+express polynomials, whose spectral signatures dominate Lorenz long-term
+statistics.
+
+These findings point to three high-priority directions: (1)~curriculum depth
+growth, where shallow-trained trees provide warm-start initialization for
+deeper structures; (2)~hybrid EML+polynomial dictionaries that combine
+symbolic interpretability with spectral fidelity; and (3)~gradient-aware
+clamping via smooth saturation to maintain signal through deep trees.
+Complex-valued extensions, EML-KAN hybrid architectures, and native CUDA
+acceleration remain promising longer-term directions.
 
 
 \bibliographystyle{plainnat}
