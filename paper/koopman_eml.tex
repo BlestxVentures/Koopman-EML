@@ -56,24 +56,26 @@ PySR baselines.
 \label{sec:intro}
 
 The Koopman operator provides a linear (but infinite-dimensional) description of
-nonlinear dynamical systems~\citep{koopman1931}.  A central challenge is selecting
+nonlinear dynamical systems \citep{koopman1931,mezic2005,budisic2012}.  A central challenge is selecting
 the dictionary of observable functions that span a finite-dimensional invariant
 subspace.  Traditional approaches --- polynomials, radial basis functions, Fourier
 modes, delay coordinates --- are chosen ad hoc and offer no completeness guarantee.
-Deep-learning methods (autoencoders, DeepKoopman) learn flexible representations
+Deep-learning methods \citep{takeishi2017,lusch2018} learn flexible representations
 but sacrifice interpretability: the resulting observables are opaque neural
-networks with no closed-form expressions.
+networks with no closed-form expressions.  Symbolic regression
+\citep{schmidt2009,cranmer2023} can discover closed-form expressions, but existing
+approaches lack the completeness guarantee that EML provides.
 
-Odrzywo{\l}ek (2026) discovered that the binary operator
+\citet{odrzywołek2026} discovered that the binary operator
 $\eml(x,y) = \exp(x) - \ln(y)$, paired with the constant~$1$, generates
 \emph{every} standard elementary function --- the continuous-math analog of the NAND
-gate for Boolean logic.  This provides a natural, complete basis for Koopman
+gate \citep{sheffer1913} for Boolean logic.  This provides a natural, complete basis for Koopman
 observable dictionaries.  Because every elementary function admits an EML tree
 representation, the search space is guaranteed to contain the true Koopman
 eigenfunctions whenever they are elementary --- which holds for a wide class of
 physically-motivated systems (harmonic oscillators, Lotka--Volterra, pendula, etc.).
 
-After training with Gumbel-softmax annealing, the continuous routing parameters snap
+After training with Gumbel-softmax annealing \citep{jang2017}, the continuous routing parameters snap
 to discrete one-hot selections, yielding \emph{exact symbolic expressions}.  The
 resulting Koopman eigenfunctions are linear combinations of these snapped EML
 observables and are therefore also elementary functions --- fully interpretable and
@@ -104,7 +106,7 @@ amenable to analytic manipulation.
 \subsection{The EML Operator}
 \label{sec:eml}
 
-Odrzywo{\l}ek (2026) introduced a binary operator that, together with the
+\citet{odrzywołek2026} introduced a binary operator that, together with the
 constant~$1$, generates every standard elementary function.  The operator is
 defined as:
 \begin{equation}\label{eq:eml}
@@ -160,21 +162,24 @@ subspace, then the dynamics in lifted coordinates become:
 where $\bK \in \C^{N \times N}$ is a finite-dimensional \textbf{Koopman matrix}.
 The central problem is choosing the dictionary of observables~$\{g_j\}$.
 
-\textbf{Extended Dynamic Mode Decomposition (EDMD)}~\citep{williams2015} solves
+\textbf{Extended Dynamic Mode Decomposition (EDMD)} \citep{williams2015} solves
 for~$\bK$ by least-squares regression given a fixed, hand-selected dictionary.
-Typical choices --- polynomials, radial basis functions, Fourier modes --- are ad hoc
-and offer no guarantee that the relevant invariant subspace is spanned.  Kernel EDMD
-and deep Koopman autoencoders~\citep{lusch2018} address expressiveness but sacrifice
-either tractability or interpretability.
+The original DMD algorithm \citep{schmid2010,tu2014} uses linear observables;
+EDMD extends this to nonlinear dictionaries.  Typical choices --- polynomials,
+radial basis functions, Fourier modes --- are ad hoc and offer no guarantee that
+the relevant invariant subspace is spanned.  Kernel EDMD
+\citep{williams2015kernel} and deep Koopman autoencoders \citep{lusch2018,otto2019}
+address expressiveness but sacrifice either tractability or interpretability.
+For a comprehensive review see \citet{brunton2022modern}.
 
 
 \subsection{SINDy and PySINDy}
 \label{sec:sindy}
 
 The Sparse Identification of Nonlinear Dynamics (SINDy)
-framework~\citep{brunton2016} discovers governing equations by regressing
+framework \citep{brunton2016} discovers governing equations by regressing
 time derivatives against a library of candidate nonlinear functions using
-sparsity-promoting optimization.  PySINDy~\citep{desilva2020,kaptanoglu2022}
+sparsity-promoting optimization.  PySINDy \citep{desilva2020,kaptanoglu2022}
 provides a modular Python implementation with interchangeable feature libraries.
 
 Our approach connects to SINDy through the shared notion of a feature library:
@@ -213,7 +218,7 @@ Child output & 0 & 0 & 1 & $f_{\text{child}}$ \\
 \end{center}
 
 During training, $(\alpha, \beta, \gamma)$ are treated as \textbf{Gumbel-softmax
-logits} normalized to a simplex.  Temperature~$\tau$ anneals from soft
+logits} \citep{jang2017} normalized to a simplex.  Temperature~$\tau$ anneals from soft
 (exploration) to hard (discrete).  After convergence, the weights snap to one-hot
 $\{0, 1\}$, yielding an exact symbolic expression.
 
@@ -312,7 +317,7 @@ Depth $d$ & Params/tree & $N\!=\!16$ & $N\!=\!32$ & Expressible functions \\
 \end{center}
 
 \noindent
-The Odrzywo{\l}ek paper reports ${\sim}25\%$ blind recovery at depth 3--4,
+\citet{odrzywołek2026} reports ${\sim}25\%$ blind recovery at depth 3--4,
 improving to $100\%$ with warm-start initialization.
 
 
@@ -367,7 +372,7 @@ The GPU-optimized EML primitive is:
 \end{equation}
 with gradients $\frac{\partial}{\partial x}\eml = \exp(x)$ and
 $\frac{\partial}{\partial y}\eml = -\frac{1}{y}$, both computable via the same
-polynomial machinery.  A custom \texttt{torch.autograd.Function} avoids redundant
+polynomial machinery.  A custom \texttt{torch.autograd.Function} \citep{paszke2019} avoids redundant
 recomputation in the backward pass: the forward stores $x$ and $y$ and reuses the
 Horner evaluation for gradient computation.
 
@@ -465,7 +470,8 @@ warm-start strategies improve recovery:
 \subsection{CTF Benchmark Framework}
 \label{sec:ctf}
 
-We evaluate on the dynamicsai.org Common Task Framework (CTF), which defines
+We evaluate on the dynamicsai.org Common Task Framework
+(CTF) \citep{wyder2025}, which defines
 12 standardized metrics (E1--E12) for dynamical-system learning.  The benchmark
 provides controlled comparisons across:
 
@@ -639,9 +645,10 @@ This yields:
 \end{itemize}
 
 \noindent
-This is a fundamental advantage over deep-learning Koopman approaches (e.g., LRAN,
-DeepKoopman): instead of opaque neural network observables, we get symbolic formulas
-that can be analyzed, simplified, and compared to physics.
+This is a fundamental advantage over deep-learning Koopman approaches
+\citep[e.g., LRAN,][]{otto2019,lusch2018}: instead of opaque neural network
+observables, we get symbolic formulas that can be analyzed, simplified, and
+compared to physics.
 
 
 \subsection{Connection to Information Geometry}
@@ -687,8 +694,8 @@ Several open questions remain:
     EML tree depth and the spectral complexity of the Koopman operator for a given
     system class?
   \item \textbf{EML-KAN hybrid:} Using EML nodes as activation functions in
-    Kolmogorov--Arnold networks could combine KAN's universal approximation with
-    EML's symbolic snap property.
+    Kolmogorov--Arnold networks \citep{liu2025kan} could combine KAN's universal
+    approximation with EML's symbolic snap property.
   \item \textbf{Hardware acceleration:} The Horner-form EML primitive maps naturally
     to FPGA or analog circuits, potentially enabling dedicated EML coprocessors that
     evaluate deep trees in $O(d)$ clock cycles.
@@ -722,6 +729,6 @@ and hardware-accelerated EML evaluation on FPGAs.
 
 
 \bibliographystyle{plainnat}
-% \bibliography{references}  % uncomment when .bib file is ready
+\bibliography{references}
 
 \end{document}
