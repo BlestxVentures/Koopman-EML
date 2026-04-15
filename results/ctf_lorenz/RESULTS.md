@@ -170,11 +170,14 @@ configuration (depth 2, 16 observables, 720 parameters).
 
 ### v1: Initial complex candidates (depth collapse observed)
 
+*Note: v1 and v2 are separate runs with different random seeds; see
+"Run-to-Run Variance" below for expected E1/E2 spread.*
+
 | Config | E1 | E2 | RMSE | Valid Steps | D2 Trees | Params |
 |--------|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Real baseline** | **6.93** | -8.98 | **0.896** | **141** | 16/16 | 720 |
 | Complex i-only | -0.96 | -34.92 | 0.971 | 118 | 0/16 | 864 |
-| Complex i+ix | -1.35 | **-3.08** | 0.975 | 111 | 0/16 | 1,152 |
+| Complex i+ix | -1.35 | -18.32 | 0.975 | 111 | 0/16 | 1,152 |
 
 **Diagnosis:** All complex trees collapsed to depth-1 formulas (D2=0/16),
 losing the compositional structure that made the real baseline effective.
@@ -243,17 +246,36 @@ inputs.
     though E2 is still worse than the v1 i+ix original (-3.08 from depth-1).
 
 23. **Depth-2 complex trees do not improve E2 over depth-1 complex trees.**
-    The v1 depth-1 formulas like `eml(i*x₁, x₂) = exp(ix₁) − ln(x₂)` gave
-    E2=-3.08, while v2 depth-2 formulas give E2=-18.94 at best. The nested
+    The unfixed depth-1 i+ix formulas like `eml(i*x₁, x₂) = exp(ix₁) − ln(x₂)`
+    gave E2=-18.32, while the best depth-2 complex configuration gives
+    E2=-18.94 — no improvement despite much richer nested structure. Nested
     complex exponentials (exp(exp(i·x))) produce ill-conditioned spectral
-    signatures that hurt long-term fidelity.
+    signatures that do not help long-term fidelity.
 
 24. **The mixed dictionary is the recommended approach for complex EML.**
     It uniquely preserves real-baseline short-term accuracy (E1=1.89, 135
     valid steps) while adding complex observables, and requires no special
     training schedule modifications.
 
-## Best EML-Koopman Configuration
+## Run-to-Run Variance
+
+Due to random initialization and Gumbel-softmax stochasticity, E1 and E2
+scores vary across runs of the same configuration. Observed ranges for the
+real baseline (depth 2, N=16):
+
+| Metric | Min | Max | Spread |
+|--------|:---:|:---:|:------:|
+| E1 | 6.38 | 7.92 | ~1.5 |
+| E2 | -21.71 | -8.98 | ~13 |
+
+This variance is inherent to the Gumbel-softmax training procedure and
+means single-run comparisons should be interpreted cautiously. Trends
+across multiple configurations (e.g., depth collapse, mixed dict advantage)
+are robust.
+
+## Best EML-Koopman Configurations
+
+### Real-only (highest E1)
 
 - Tree depth: 2
 - Observables: 16
@@ -262,3 +284,24 @@ inputs.
 - Training: 1200 epochs, lr=3e-3, batch_size=2048
 - Annealing: τ from 2.0→1.0→0.1, snap at epoch 1080
 - Total parameters: 720
+- Best E1: 7.92, Best E2: -8.98
+
+### Mixed real+complex (recommended for complex systems)
+
+- Tree depth: 2
+- Observables: 16 (8 real + 8 complex with i+ix candidates)
+- Taylor orders: exp=10, ln=12
+- Clamp range: [-5, 5]
+- Training: 1200 epochs, lr=3e-3, batch_size=2048
+- Annealing: τ from 2.0→1.0→0.1, snap at epoch 1080
+- Total parameters: 960
+- E1: 1.89, E2: -22.87, Valid steps: 135
+
+### Combined fixes (best complex depth-2 composition)
+
+- Tree depth: 2
+- Observables: 16 (8 real + 8 complex with i+ix candidates)
+- Child-logit bias: +2.0
+- Slow anneal: τ_start=3.0, phase1_frac=0.75, phase2_frac=0.15
+- Total parameters: 960
+- E1: 2.22, E2: -18.94, Valid steps: 137, D2: 16/16
