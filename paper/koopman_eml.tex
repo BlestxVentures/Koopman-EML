@@ -651,33 +651,6 @@ observables, we get symbolic formulas that can be analyzed, simplified, and
 compared to physics.
 
 
-\subsection{Connection to Information Geometry}
-
-The Koopman eigenfunctions $\{\varphi_j\}$ define a natural coordinate system on
-the state manifold~$\cM$.  The lifting map
-$\bg_\theta : \cM \to \R^N$ induces a pullback metric on~$\cM$:
-\begin{equation}\label{eq:pullback}
-  (G_\theta)_{ab} \;=\; \sum_{j=1}^{N}
-  \frac{\partial g_j}{\partial x^a}\,\frac{\partial g_j}{\partial x^b}.
-\end{equation}
-When $\bg_\theta$ consists of snapped EML trees, each $g_j$ is a known elementary
-function, so $G_\theta$ is computable in closed form.  This connects directly to the
-Fisher information metric if the observables are interpreted as sufficient statistics
-of a parametric family.
-
-For multi-agent systems, this enables:
-\begin{itemize}
-  \item \textbf{Behavioral basis decomposition:} The Koopman eigenfunctions separate
-    dynamics into independent modes, each with characteristic timescale $1/\sigma_j$
-    and frequency~$\omega_j$.
-  \item \textbf{Natural gradient on policy manifolds:} The pullback metric~$G_\theta$
-    provides the Riemannian structure for natural gradient descent, with an explicit
-    elementary form.
-  \item \textbf{Geodesic policy interpolation:} Geodesics on
-    $(\cM, G_\theta)$ define shortest paths between behavioral strategies.
-\end{itemize}
-
-
 \subsection{Limitations and Future Work}
 
 Several open questions remain:
