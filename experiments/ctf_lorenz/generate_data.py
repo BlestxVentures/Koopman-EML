@@ -40,14 +40,18 @@ def generate_lorenz_trajectories(
         all_states.append(sol.y.T)
 
     states = np.concatenate(all_states, axis=0)
-    n_total = len(states)
 
-    # Train: first 80%, test: last 20%
+    # Normalize to zero-mean, unit-variance (critical for EML Taylor series stability)
+    mean = states.mean(axis=0)
+    std = states.std(axis=0)
+    std[std < 1e-8] = 1.0
+    states_norm = (states - mean) / std
+
+    n_total = len(states_norm)
     split = int(0.8 * n_total)
-    X_train = states[:split]
-    X_test = states[split:]
+    X_train = states_norm[:split]
+    X_test = states_norm[split:]
 
-    # Consecutive pairs
     X_k_train = X_train[:-1]
     X_k1_train = X_train[1:]
     X_k_test = X_test[:-1]
@@ -55,9 +59,10 @@ def generate_lorenz_trajectories(
 
     # CTF-style forecasting: train on long window, predict short window
     train_len = int(0.9 * len(all_states[0]))
-    forecast_traj = all_states[0]
-    X1train = forecast_traj[:train_len]
-    X1test = forecast_traj[train_len:]
+    forecast_traj_raw = all_states[0]
+    forecast_norm = (forecast_traj_raw - mean) / std
+    X1train = forecast_norm[:train_len]
+    X1test = forecast_norm[train_len:]
 
     return {
         "X_k_train": X_k_train,
@@ -66,8 +71,11 @@ def generate_lorenz_trajectories(
         "X_k1_test": X_k1_test,
         "X1train": X1train,
         "X1test": X1test,
+        "X1test_raw": forecast_traj_raw[train_len:],
         "t_eval": t_eval,
         "dt": dt,
+        "mean": mean,
+        "std": std,
     }
 
 

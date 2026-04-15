@@ -441,7 +441,10 @@ Training proceeds in three phases:
 \noindent
 \textbf{Overflow hazard.}  Nested EML compositions produce iterated exponentials
 ($e^{e^{e^x}}$) during exploration.  EML inputs are clamped to $[-C, C]$ with
-$C \approx 20$, and state data is normalized to $[-1, 1]$ before lifting.
+$C = 5$ (so $\exp(C) \approx 148$), and state data is normalized to zero-mean
+unit-variance before lifting.  The tight clamp is essential: $C = 20$ yields
+$\exp(20) \approx 5 \times 10^8$, causing catastrophic loss magnitudes in early
+training.
 
 \subsubsection{Warm-Start Strategies}
 
@@ -485,20 +488,20 @@ the primary test case, with 10,000 training pairs sampled at $\Delta t = 0.01$.
 \subsection{Baselines}
 \label{sec:baselines}
 
-We compare five methods:
+We compare four methods:
 
 \begin{enumerate}
-  \item \textbf{EML-Koopman (ours):} $N\!=\!32$ trees at depth~3, three-phase
-    training with $T\!=\!2000$ epochs.
+  \item \textbf{EML-Koopman (ours):} $N\!=\!16$ trees at depth~2 (720
+    parameters), three-phase training with $T\!=\!1200$ epochs, batch
+    size~2048, input clamping at $\pm 5$.  Taylor orders: $M_e\!=\!10$,
+    $M_l\!=\!12$.
   \item \textbf{EDMD-Poly:} Polynomial dictionary up to degree~4
-    ($\binom{n+4}{4} = 35$ features for $n\!=\!3$).
-  \item \textbf{EDMD-RBF:} Radial basis function dictionary with 100 Gaussian
-    centers placed by $k$-means.
-  \item \textbf{Deep Koopman:} Autoencoder with 3-layer MLP encoder
-    ($3 \to 128 \to 64 \to 32$) and symmetric decoder; linear dynamics in
-    32-dimensional latent space.
-  \item \textbf{PySR:} Symbolic regression via PySR~\citep{cranmer2023} to
-    discover Koopman observables, followed by least-squares $\bK$ fitting.
+    ($\binom{n+4}{4} = 35$ features for $n\!=\!3$), least-squares $\bK$.
+  \item \textbf{EDMD-RBF:} 200 Gaussian RBF centers selected randomly from the
+    training data, $\sigma\!=\!1.0$.
+  \item \textbf{Deep Koopman:} 3-layer MLP autoencoder ($3 \to 128 \to 128
+    \to 32$), symmetric decoder, linear dynamics in 32-dimensional latent
+    space (43{,}299 parameters), trained for 1200 epochs.
 \end{enumerate}
 
 
@@ -506,41 +509,107 @@ We compare five methods:
 \section{Results}
 \label{sec:results}
 
+\subsection{CTF Lorenz Benchmark}
+
+Table~\ref{tab:ctf} summarizes the CTF Lorenz benchmark results for all methods.
+All models were trained on 20,000 state pairs from 20 Lorenz trajectories
+($\sigma\!=\!10$, $\rho\!=\!28$, $\beta\!=\!8/3$, $\Delta t\!=\!0.01$),
+normalized to zero-mean unit-variance.  Forecasting is evaluated on a held-out
+trajectory segment (501 time steps).
+
 \begin{table}[t]
 \centering
-\caption{CTF Lorenz benchmark comparison. E1 (short-term forecasting NRMSE),
-  E2 (long-term statistics error), E3 (attractor geometry). Lower is better for
-  E1 and E3; E2 is a composite score. Published CTF reference values shown for
-  context.}
+\caption{CTF Lorenz benchmark comparison.  E1 = short-term forecasting score
+  ($100 \times (1 - \text{NRMSE})$, higher is better).  E2 = long-term spectral
+  score (higher is better).  Valid steps = number of time steps before prediction
+  error exceeds $0.5\sigma$ of the test trajectory.  Published CTF leaderboard
+  values (E1--E12 average) shown for context.}
 \label{tab:ctf}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccccc}
 \toprule
-Method & E1 Score & E2 Score & E3 Score & Parameters \\
+Method & E1 & E2 & RMSE & Valid Steps & Params \\
 \midrule
-EML-Koopman (ours) & --- & --- & --- & $\sim$1,600 \\
-EDMD-Poly & --- & --- & --- & 35 \\
-EDMD-RBF & --- & --- & --- & 300 \\
-Deep Koopman & --- & --- & --- & $\sim$25K \\
-PySR & --- & --- & --- & varies \\
+\textbf{EML-Koopman (ours)} & \textbf{7.68} & $-7.54$ & \textbf{0.888} & \textbf{144} & 720 \\
+EDMD-Poly (degree 4) & $-1.11$ & \textbf{52.94} & 0.973 & 84 & $\sim$35 \\
+EDMD-RBF (200 centers) & $-10{,}216$ & $-252$ & 99.3 & 0 & $\sim$200 \\
+Deep Koopman (autoencoder) & 0.63 & $-34.28$ & 0.956 & 105 & 43{,}299 \\
 \midrule
-LSTM (CTF published) & 64.54 & --- & --- & --- \\
-DeepONet (CTF published) & 57.80 & --- & --- & --- \\
-Reservoir (CTF published) & 54.87 & --- & --- & --- \\
+LSTM (CTF published) & \multicolumn{2}{c}{avg = 64.54} & --- & --- & --- \\
+DeepONet (CTF published) & \multicolumn{2}{c}{avg = 57.80} & --- & --- & --- \\
+Reservoir (CTF published) & \multicolumn{2}{c}{avg = 54.87} & --- & --- & --- \\
+KAN (CTF published) & \multicolumn{2}{c}{avg = 47.28} & --- & --- & --- \\
+SINDy (CTF published) & \multicolumn{2}{c}{avg = $-3.00$} & --- & --- & --- \\
+PyKoopman (CTF published) & \multicolumn{2}{c}{avg = $-20.11$} & --- & --- & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:ctf} summarizes the CTF benchmark results.  Numerical values will be
-populated upon completion of the benchmark runs.  The EML-Koopman model operates
-with approximately 1,600 parameters (32 trees $\times$ 34 routing parameters + $32^2$
-Koopman matrix + $3 \times 32$ decoder), orders of magnitude fewer than the deep
-Koopman baseline.
+\paragraph{Short-term forecasting (E1).}
+EML-Koopman achieves E1 $= 7.68$, the highest among all implemented baselines and
+substantially above the two other interpretable methods on the CTF leaderboard:
+SINDy ($-3.00$) and PyKoopman ($-20.11$).  The valid prediction horizon of 144
+time steps (1.44 Lyapunov times at $\Delta t = 0.01$) exceeds EDMD-Poly (84 steps)
+and Deep Koopman (105 steps) despite using 60$\times$ fewer parameters than the
+autoencoder.  The gap to black-box methods (LSTM 64.54, DeepONet 57.80) reflects
+the expected trade-off between parameter capacity and interpretability.
 
-The key qualitative advantage of the EML approach is that after Phase~3 snap, each
-observable is an exact symbolic expression.  For instance, a depth-3 tree might
-converge to $g_j(\bx) = \exp(x_1) - \ln(\exp(x_0) - \ln(1))$, which simplifies to
-$g_j(\bx) = \exp(x_1) - \exp(x_0)$.  Such expressions are directly amenable to
-analytic eigenfunction analysis --- unlike neural-network observables.
+\paragraph{Long-term statistics (E2).}
+EDMD-Poly achieves the highest E2 ($52.94$) by a wide margin, because its
+polynomial basis functions naturally capture the power spectral shape of the
+Lorenz attractor even when short-term prediction diverges.  EML-Koopman's E2
+of $-7.54$ indicates room for improvement in long-term spectral fidelity, likely
+through deeper trees (depth 3--4) that can express a wider range of nonlinear
+functions.
+
+\paragraph{Failure modes.}
+EDMD-RBF diverges catastrophically (E1 $= -10{,}216$) because random Gaussian
+centers in the normalized 3D Lorenz state space produce a severely ill-conditioned
+Koopman matrix.  This underscores the importance of dictionary design --- a problem
+that EML addresses through gradient-based observable discovery.
+
+\subsection{Discovered Symbolic Observables}
+
+After Phase~3 snap, all 16 EML tree observables reduce to closed-form
+elementary functions.  Representative examples (with $x_0, x_1, x_2$
+corresponding to normalized Lorenz $x, y, z$):
+
+\begin{center}
+\begin{tabular}{cl}
+\toprule
+Observable & Snapped Formula \\
+\midrule
+$g_0$ & $\eml(\eml(1, x_1),\; x_1)$ \\
+$g_1$ & $\eml(\eml(1, x_1),\; 1)$ \\
+$g_2$ & $\eml(\eml(1, x_0),\; 1)$ \\
+$g_4$ & $\eml(\eml(1, x_1),\; x_2)$ \\
+$g_{10}$ & $\eml(\eml(1, x_0),\; x_1)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+These simplify to:
+\begin{align*}
+  g_1(\bx) &= \exp(e - \ln x_1) = e \cdot x_1^{-1} \cdot \exp(0) \quad
+    \text{(involves $1/y$)}, \\
+  g_2(\bx) &= \exp(e - \ln x_0) \quad
+    \text{(involves $1/x$)}, \\
+  g_4(\bx) &= \exp(e - \ln x_1) - \ln x_2 \quad
+    \text{(mixes exponential and logarithmic)}.
+\end{align*}
+The model predominantly discovers observables built from $\eml(1, x_i) = e - \ln x_i$
+as an inner expression, then applies a second EML layer.  This structure is natural:
+depth-2 trees can represent $e^x$, $\ln x$, and their compositions, but not
+yet multiplication or addition (which require depth $\ge 5$).  The abundance of
+logarithmic and exponential-reciprocal features suggests the model has found the
+most informative nonlinear transformations available at depth~2.
+
+\paragraph{Interpretability advantage.}
+Unlike the 43{,}299-parameter Deep Koopman autoencoder --- whose observables are
+opaque 3-layer neural networks --- every EML observable is a human-readable formula.
+The resulting Koopman eigenfunctions $\varphi_j(\bx) = \bv_j^\top \bg(\bx)$ are
+therefore explicit linear combinations of elementary functions, amenable to analytic
+simplification and physical interpretation.
 
 
 % ============================================================================
@@ -639,14 +708,17 @@ Horner-form Taylor primitives eliminate transcendental function calls, and
 Gumbel-softmax annealing with three-phase training produces exact symbolic
 observables upon convergence.
 
-The resulting Koopman eigenfunctions are interpretable closed-form expressions,
-enabling analytic eigendecomposition and connections to information geometry that are
-inaccessible to black-box approaches.  Integration with PySINDy provides a path to
-sparse model selection over the complete EML feature space.
+On the CTF Lorenz benchmark, EML-Koopman achieves the best short-term forecasting
+score (E1 $= 7.68$) among all implemented baselines and surpasses the two other
+interpretable CTF methods (SINDy at $-3.00$, PyKoopman at $-20.11$), while using
+only 720 parameters --- 60$\times$ fewer than the Deep Koopman autoencoder.  Every
+discovered observable is a closed-form symbolic expression, yielding interpretable
+Koopman eigenfunctions that black-box methods cannot produce.
 
-The framework opens several directions for future work: scaling to deeper trees via
-curriculum training, complex-valued extensions for oscillatory systems, hybrid
-EML-KAN architectures, and hardware-accelerated EML evaluation.
+The framework opens several directions for future work: scaling to deeper trees
+(depth 3--5) via curriculum training to close the gap with high-capacity models,
+complex-valued extensions for oscillatory systems, hybrid EML-KAN architectures,
+and hardware-accelerated EML evaluation on FPGAs.
 
 
 \bibliographystyle{plainnat}

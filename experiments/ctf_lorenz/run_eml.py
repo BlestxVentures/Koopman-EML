@@ -15,7 +15,7 @@ from koopman_eml.analysis import (
     koopman_eigendecomposition,
     prediction_rollout,
 )
-from koopman_eml.ctf import evaluate_ctf, short_term_score
+from koopman_eml.ctf import short_term_score, long_term_score
 from koopman_eml.training import train_koopman_eml
 from experiments.ctf_lorenz.generate_data import generate_lorenz_trajectories
 
@@ -23,8 +23,9 @@ from experiments.ctf_lorenz.generate_data import generate_lorenz_trajectories
 def run(
     n_observables: int = 16,
     tree_depth: int = 3,
-    n_epochs: int = 2000,
-    lr: float = 1e-3,
+    n_epochs: int = 1500,
+    lr: float = 2e-3,
+    max_train_pairs: int = 20000,
     device: str = "auto",
     output_dir: str = "results/ctf_lorenz/eml",
 ):
@@ -35,18 +36,27 @@ def run(
     print("EML-Koopman on CTF Lorenz")
     print("=" * 70)
 
-    # Generate data
     data = generate_lorenz_trajectories()
-    X_k = torch.tensor(data["X_k_train"], dtype=torch.float32)
-    X_k1 = torch.tensor(data["X_k1_train"], dtype=torch.float32)
+    X_k_np = data["X_k_train"]
+    X_k1_np = data["X_k1_train"]
 
-    # Build and train model
+    # Subsample for speed
+    if len(X_k_np) > max_train_pairs:
+        rng = np.random.default_rng(0)
+        idx = rng.choice(len(X_k_np), max_train_pairs, replace=False)
+        X_k_np, X_k1_np = X_k_np[idx], X_k1_np[idx]
+
+    X_k = torch.tensor(X_k_np, dtype=torch.float32)
+    X_k1 = torch.tensor(X_k1_np, dtype=torch.float32)
+    print(f"Training on {len(X_k)} pairs (normalized), device={device}")
+
     model = KoopmanEML(state_dim=3, n_observables=n_observables, tree_depth=tree_depth)
     print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     history = train_koopman_eml(
         model, X_k, X_k1,
         n_epochs=n_epochs, lr=lr, device=device, verbose=True,
+        batch_size=4096,
     )
 
     # Eigendecomposition
@@ -62,7 +72,7 @@ def run(
     for i, f in enumerate(formulas):
         print(f"  g_{i}(x) = {f}")
 
-    # Forecasting evaluation
+    # Forecasting evaluation (in normalized space)
     x0 = torch.tensor(data["X1train"][-1], dtype=torch.float32)
     n_forecast = len(data["X1test"])
     traj = prediction_rollout(model, x0, n_forecast - 1, device=device)
@@ -73,12 +83,12 @@ def run(
     pred, truth = pred[:n_eval], truth[:n_eval]
 
     metrics = compute_metrics(pred, truth)
-    print(f"\nForecasting: RMSE={metrics['rmse']:.4f}, valid_steps={metrics['valid_prediction_steps']}")
-
     e1 = short_term_score(pred, truth)
+    e2 = long_term_score(pred, truth)
+    print(f"\nForecasting: RMSE={metrics['rmse']:.4f}, valid_steps={metrics['valid_prediction_steps']}")
     print(f"CTF E1 (short-term): {e1:.2f}")
+    print(f"CTF E2 (long-term):  {e2:.2f}")
 
-    # Save results
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), out / "model.pt")
@@ -87,7 +97,7 @@ def run(
     with open(out / "formulas.json", "w") as f:
         json.dump(formulas, f, indent=2)
     with open(out / "metrics.json", "w") as f:
-        json.dump({**metrics, "E1": e1}, f, indent=2)
+        json.dump({**metrics, "E1": e1, "E2": e2}, f, indent=2)
     with open(out / "history.json", "w") as f:
         json.dump(history, f)
     print(f"\nResults saved to {out}")

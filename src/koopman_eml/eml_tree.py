@@ -163,7 +163,7 @@ class EMLTreeVectorized(nn.Module):
         exp_order: int = 12,
         ln_order: int = 16,
         use_complex: bool = False,
-        clamp_input: float = 20.0,
+        clamp_input: float = 5.0,
     ) -> torch.Tensor:
         """Bottom-up evaluation.  x: [B, n_vars] -> returns [B, n_trees]."""
         if x.dim() == 1:
