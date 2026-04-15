@@ -1,0 +1,160 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{natbib}
+\usepackage[margin=1in]{geometry}
+
+\DeclareMathOperator{\eml}{eml}
+\newcommand{\bx}{\mathbf{x}}
+\newcommand{\bg}{\mathbf{g}}
+\newcommand{\bK}{\mathbf{K}}
+\newcommand{\bC}{\mathbf{C}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\C}{\mathbb{C}}
+
+\title{Koopman Operator Lifting via EML Observable Dictionaries:\\
+A PySINDy-Integrated Framework with CTF Benchmarking}
+\author{Jim Beaver}
+\date{April 2026 --- Working Draft}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We introduce a framework for learning interpretable Koopman operator
+representations using the EML (Exp-Minus-Log) Sheffer operator
+$\eml(x,y) = \exp(x) - \ln(y)$ as the basis for observable dictionaries.
+Since every elementary function can be expressed as a binary tree of identical
+EML nodes, parameterized EML trees provide a \emph{complete}, gradient-trainable
+search space for Koopman eigenfunctions.  After Gumbel-softmax annealing and
+weight snapping, the learned observables are exact symbolic expressions ---
+yielding closed-form Koopman eigenfunctions that black-box methods cannot produce.
+We package EML observables as a PySINDy-compatible feature library and validate
+against the dynamicsai.org Common Task Framework (CTF) 12-metric benchmark on the
+Lorenz system, comparing to EDMD, deep Koopman autoencoders, and PySR baselines.
+\end{abstract}
+
+% ============================================================================
+\section{Introduction}
+\label{sec:intro}
+
+% TODO: Expand with motivation, context, and contributions.
+
+The Koopman operator provides a linear (but infinite-dimensional) description of
+nonlinear dynamical systems.  A central challenge is selecting the dictionary of
+observable functions that span a finite-dimensional invariant subspace.
+
+Odrzywo{\l}ek (2026) discovered that the binary operator $\eml(x,y) = \exp(x) - \ln(y)$,
+paired with the constant 1, generates \emph{every} standard elementary function ---
+the continuous-math analog of the NAND gate for Boolean logic.  This provides
+a natural, complete basis for Koopman observable dictionaries.
+
+\paragraph{Contributions.}
+\begin{itemize}
+    \item Parameterized EML trees as gradient-trainable Koopman observables with
+          exact symbolic snap.
+    \item GPU-optimized Taylor-series EML primitives (zero transcendental calls).
+    \item PySINDy integration via \texttt{EMLLibrary}.
+    \item CTF benchmark evaluation (E1--E12) on Lorenz.
+\end{itemize}
+
+
+% ============================================================================
+\section{Background}
+\label{sec:background}
+
+\subsection{The EML Operator}
+
+% TODO: Summarize Odrzywołek's result, key identities.
+
+\subsection{Koopman Operator Theory}
+
+% TODO: Standard Koopman setup, EDMD, deep Koopman.
+
+\subsection{SINDy and PySINDy}
+
+% TODO: Brief overview of sparse identification.
+
+
+% ============================================================================
+\section{Method}
+\label{sec:method}
+
+\subsection{EML Trees as Koopman Observables}
+
+% TODO: Master formula, Gumbel-softmax routing, three-phase training.
+
+\subsection{Taylor-Series GPU Primitives}
+
+% TODO: Horner-form exp/ln, range reduction, custom autograd.
+
+\subsection{PySINDy Integration}
+
+% TODO: EMLLibrary API, enumerative vs pre-trained modes.
+
+
+% ============================================================================
+\section{Experimental Setup}
+\label{sec:experiments}
+
+\subsection{CTF Benchmark Framework}
+
+% TODO: Describe CTF, E1-E12 metrics, Lorenz dataset.
+
+\subsection{Baselines}
+
+% TODO: EDMD-Poly, EDMD-RBF, Deep Koopman, PySR.
+
+
+% ============================================================================
+\section{Results}
+\label{sec:results}
+
+% TODO: Tables, radar plots, prediction rollout figures, formula examples.
+
+\begin{table}[h]
+\centering
+\caption{CTF Lorenz E1 (short-term forecasting) comparison.}
+\label{tab:e1}
+\begin{tabular}{lcc}
+\toprule
+Method & E1 Score & Parameters \\
+\midrule
+EML-Koopman (ours) & --- & --- \\
+EDMD-Poly & --- & --- \\
+EDMD-RBF & --- & --- \\
+Deep Koopman & --- & --- \\
+PySR & --- & --- \\
+\midrule
+LSTM (CTF published) & 64.54 & --- \\
+DeepONet (CTF published) & 57.80 & --- \\
+Reservoir (CTF published) & 54.87 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+% TODO: Interpretability advantages, limitations, future work.
+
+
+% ============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+% TODO: Summary of contributions and outlook.
+
+
+\bibliographystyle{plainnat}
+% \bibliography{references}  % uncomment when .bib file is ready
+
+\end{document}
