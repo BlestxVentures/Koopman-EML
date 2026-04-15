@@ -27,6 +27,7 @@ class KoopmanEML(nn.Module):
         exp_order: int = 12,
         ln_order: int = 16,
         use_complex: bool = False,
+        clamp_input: float = 5.0,
     ):
         super().__init__()
         self.state_dim = state_dim
@@ -34,6 +35,7 @@ class KoopmanEML(nn.Module):
         self.exp_order = exp_order
         self.ln_order = ln_order
         self.use_complex = use_complex
+        self.clamp_input = clamp_input
 
         self.dictionary = EMLTreeVectorized(
             n_trees=n_observables, depth=tree_depth, n_vars=state_dim,
@@ -46,7 +48,8 @@ class KoopmanEML(nn.Module):
     def lift(self, x: torch.Tensor, tau: float = 1.0) -> torch.Tensor:
         """Lift state to observable space: [B, state_dim] -> [B, n_obs]."""
         return self.dictionary(
-            x, tau=tau, exp_order=self.exp_order, ln_order=self.ln_order, use_complex=self.use_complex,
+            x, tau=tau, exp_order=self.exp_order, ln_order=self.ln_order,
+            use_complex=self.use_complex, clamp_input=self.clamp_input,
         )
 
     def predict(self, g: torch.Tensor) -> torch.Tensor:
