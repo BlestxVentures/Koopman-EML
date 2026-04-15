@@ -99,6 +99,73 @@ Goal: maximize E2 (long-term spectral score) to close the gap with EDMD-Poly (52
     smallest N_obs (16) consistently achieved the best or near-best E2,
     suggesting over-parameterized dictionaries dilute spectral fidelity.
 
+## Full CTF E1-E12 Evaluation
+
+Complete evaluation across all 12 CTF metrics using the best EML-Koopman
+configuration (depth 2, 16 observables, 720 parameters).
+
+| Metric | Category | Score |
+|:-------|:------------------------------------|------:|
+| E1     | Short-term forecasting              |  6.38 |
+| E2     | Long-term spectral                  |  3.77 |
+| E3     | Medium-noise reconstruction         | 33.68 |
+| E4     | Medium-noise long-term forecast     | -41.87 |
+| E5     | High-noise reconstruction           | 30.65 |
+| E6     | High-noise long-term forecast       | -41.84 |
+| E7     | Limited data, short-term            |  7.77 |
+| E8     | Limited data, long-term             | -47.37 |
+| E9     | Limited noisy data, short-term      |  3.43 |
+| E10    | Limited noisy data, long-term       | -0.18 |
+| E11    | Parametric interpolation            |  1.16 |
+| E12    | Parametric extrapolation            | -0.12 |
+|        | **Average (E1-E12)**                | **-3.71** |
+
+### CTF Leaderboard Comparison (Lorenz, avg over E1-E12)
+
+| Method | Avg Score |
+|--------|:---------:|
+| LSTM | 64.54 |
+| DeepONet | 57.80 |
+| Reservoir | 54.87 |
+| KAN | 47.28 |
+| ODE-LSTM | 41.67 |
+| **SINDy** | **-3.00** |
+| **EML-Koopman (ours)** | **-3.71** |
+| PyKoopman | -20.11 |
+
+### Full CTF Analysis
+
+12. **Denoising is a standout capability (E3=33.68, E5=30.65).** The Koopman
+    lift→reconstruct pipeline acts as a learned denoiser: lifting noisy
+    observations into the low-dimensional EML observable manifold rejects
+    noise that lies outside the manifold. This works even at 10 dB SNR
+    (E5=30.65), with only modest degradation from 20 dB (E3=33.68).
+
+13. **Short-term forecasting is robust to data scarcity (E7=7.77).** Training
+    on only 10% of the data produces E7=7.77 — *higher* than the full-data
+    E1=6.38. The 720-parameter model is naturally regularized and does not
+    overfit even with severely reduced training budgets.
+
+14. **Long-term spectral metrics are consistently negative (E4, E6, E8).**
+    The exp/ln observables at depth 2 cannot reproduce the Lorenz power
+    spectrum, which is well-captured by polynomial bases. This is the same
+    structural limitation identified in the E2 analysis.
+
+15. **Noisy training degrades gracefully (E9=3.43, E10=-0.18).** Training on
+    limited noisy data still yields positive short-term scores, and E10 is
+    near zero rather than deeply negative — the model avoids catastrophic
+    failure even under simultaneous noise and data scarcity.
+
+16. **Parametric generalization is weak (E11=1.16, E12=-0.12).** The learned
+    Koopman operator does not transfer well across different ρ values without
+    explicit parameterization. E11 (interpolation) is marginally positive
+    while E12 (extrapolation) is near zero.
+
+17. **Overall average (-3.71) is competitive with SINDy (-3.00).** EML-Koopman
+    is within 1 point of SINDy and 16 points above PyKoopman (-20.11) on the
+    full 12-metric average, while providing closed-form symbolic observables
+    with only 720 parameters.
+
 ## Best EML-Koopman Configuration
 
 - Tree depth: 2
