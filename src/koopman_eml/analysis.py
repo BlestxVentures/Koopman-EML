@@ -44,9 +44,8 @@ def _build_candidate_labels(dict_mod) -> list[str]:
     return labels
 
 
-def extract_eml_formulas(model: KoopmanEML) -> list[str]:
-    """Read out the symbolic EML formula for each observable after snapping."""
-    dict_mod = model.dictionary
+def _extract_from_dict(dict_mod) -> list[str]:
+    """Extract formulas from a single EMLTreeVectorized dictionary."""
     base_labels = _build_candidate_labels(dict_mod)
     n_base = len(base_labels)
     formulas: list[str] = []
@@ -87,6 +86,13 @@ def extract_eml_formulas(model: KoopmanEML) -> list[str]:
         formulas.append(prev_exprs[0])
 
     return formulas
+
+
+def extract_eml_formulas(model: KoopmanEML) -> list[str]:
+    """Read out the symbolic EML formula for each observable after snapping."""
+    if getattr(model, "_mixed", False):
+        return _extract_from_dict(model.dict_real) + _extract_from_dict(model.dict_complex)
+    return _extract_from_dict(model.dictionary)
 
 
 def prediction_rollout(

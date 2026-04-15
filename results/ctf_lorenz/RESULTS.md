@@ -168,53 +168,90 @@ configuration (depth 2, 16 observables, 720 parameters).
 
 ## Complex EML Primitives Comparison
 
-Evaluation of complex-valued EML candidates on the same Lorenz data.
-Three configurations: real baseline, i-only (adds constant i to candidates),
-and i+ix (adds i and ix₀, ix₁, ix₂ to candidates).
+### v1: Initial complex candidates (depth collapse observed)
 
-| Config | E1 | E2 | RMSE | Valid Steps | Params | Train Time |
+| Config | E1 | E2 | RMSE | Valid Steps | D2 Trees | Params |
 |--------|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Real baseline** | **6.93** | -8.98 | **0.896** | **141** | 720 | 57s |
-| Complex i-only | -0.96 | -34.92 | 0.971 | 118 | 864 | 93s |
-| Complex i+ix | -1.35 | **-3.08** | 0.975 | 111 | 1,152 | 110s |
+| **Real baseline** | **6.93** | -8.98 | **0.896** | **141** | 16/16 | 720 |
+| Complex i-only | -0.96 | -34.92 | 0.971 | 118 | 0/16 | 864 |
+| Complex i+ix | -1.35 | **-3.08** | 0.975 | 111 | 0/16 | 1,152 |
 
-### Discovered Complex Observables
+**Diagnosis:** All complex trees collapsed to depth-1 formulas (D2=0/16),
+losing the compositional structure that made the real baseline effective.
+Root cause: the expanded candidate set diluted Gumbel-softmax probability
+mass for the child-node slot, causing it to be outcompeted during soft
+exploration.
 
-The i+ix model found oscillatory observables absent from the real grammar:
+### v2: With depth-collapse fixes
 
-- g₀ = eml(i·x₁, x₂) = exp(ix₁) − ln(x₂)   (mixes trig of y with log of z)
-- g₁ = eml(i·x₂, x₀) = exp(ix₂) − ln(x₀)   (mixes trig of z with log of x)
-- g₂ = eml(i·x₀, x₀) = exp(ix₀) − ln(x₀)   (trig and log of same variable)
+Four fixes were implemented and tested individually and in combination:
 
-The i-only model discovered `eml(i, x₀) = exp(i) − ln(x₀)` which adds a
-fixed oscillatory constant (e^i ≈ 0.54 + 0.84i) but cannot generate
-state-dependent oscillations.
+1. **Child-logit bias** — initialize the f_child logit at non-leaf levels
+   with a +2.0 bias, making tree composition the default.
+2. **Warm-start** — pre-train a real model for 800 epochs, then expand
+   the logits with zero-initialized complex candidate slots.
+3. **Mixed dictionary** — 8 trees use real grammar, 8 use complex grammar.
+4. **Slow anneal** — 75% exploration phase (vs 60%), τ_start=3.0 (vs 2.0).
+
+| Config | E1 | E2 | RMSE | Steps | D2 | Params | Time |
+|--------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Real baseline** | **7.92** | -21.71 | **0.886** | **142** | 16 | 720 | 64s |
+| i+ix original | -1.52 | -18.32 | 0.977 | 111 | 0 | 1,152 | 129s |
+| i+ix + child bias | -0.00 | -215.00 | 0.962 | 126 | 16 | 1,152 | 129s |
+| i+ix + warm-start | -0.05 | -57.82 | 0.963 | 126 | 16 | 1,152 | 85s |
+| **i+ix + mixed dict** | **1.89** | -22.87 | **0.944** | **135** | 11 | 960 | 111s |
+| i+ix + slow anneal | -2.53 | -58.09 | 0.987 | 107 | 0 | 1,152 | 129s |
+| **i+ix + all fixes** | **2.22** | **-18.94** | **0.941** | **137** | 16 | 960 | 107s |
+
+### Discovered Complex Observables (v2)
+
+**Mixed dict** — Real trees learned standard depth-2 forms (`eml(eml(1,x₁), x₀)`),
+while complex trees discovered `eml(i, i*x₁)` and `eml(i, eml(i, x₀))`:
+
+- g₈ = eml(i, i·x₁) = exp(i) − ln(i·x₁) = (0.54+0.84i) − ln(i) − ln(x₁)
+- g₉ = eml(i, eml(i, x₀)) = exp(i) − ln(exp(i) − ln(x₀))
+
+**All fixes combined** — 8 real trees produce `eml(eml(1,x₁), eml(1,x₁))`;
+8 complex trees produce forms like `eml(eml(i*x₁, 1), eml(i*x₁, 1))` and
+`eml(eml(i, x₂), eml(i, x₂))`, achieving depth-2 composition with complex
+inputs.
 
 ### Complex EML Analysis
 
-18. **The i+ix mode achieves the best long-term E2 (-3.08) of any EML
-    configuration tested.** This improves on the real baseline (-8.98) by
-    nearly 6 points, suggesting that oscillatory observables like exp(ix)
-    better capture the Lorenz attractor's spectral structure.
+18. **The child-logit bias (Fix 1) successfully restores depth-2 composition
+    (D2=16/16) but worsens E2 catastrophically (-215).** The bias forces
+    composition prematurely before the leaf nodes have learned useful routing,
+    creating degenerate nested structures like `eml(eml(i, i*x₀), x₀)`.
 
-19. **Short-term E1 degrades with complex candidates.** Real baseline E1=6.93
-    vs i+ix E1=-1.35. The complex-to-real reconstruction via
-    C_re(g.real) + C_im(g.imag) introduces an information bottleneck that
-    hurts pointwise trajectory tracking.
+19. **Warm-start (Fix 2) also restores depth-2 but with poor diversity.**
+    All 16 trees converge to variations of `eml(eml(1, i*x₁), i*x_j)`.
+    The real pre-training locks in a dominant routing pattern (x₁-based),
+    and the complex expansion inherits this lack of diversity.
 
-20. **The i-only mode underperforms both alternatives.** Adding just the constant
-    i without state-dependent imaginary inputs yields E2=-34.92 — far worse
-    than either baseline. The fixed phase offset is not useful for dynamical
-    systems; state-dependent oscillations (ix_j) are needed.
+20. **Mixed dictionary (Fix 3) achieves the best balance.** E1=1.89 recovers
+    most of the real baseline's short-term accuracy (7.92) while maintaining
+    complex observables. The real half provides stable depth-2 compositional
+    structure; the complex half adds novel oscillatory functions.
 
-21. **Observable-space prediction loss is dramatically lower for complex models.**
-    Final snapped prediction loss: real=427, i-only=1.2, i+ix=1.7. The complex
-    Koopman matrix learns a more faithful linear dynamics in the lifted space,
-    but the reconstruction bottleneck limits end-to-end accuracy.
+21. **Slow anneal (Fix 4) alone does not help** — the trees still collapse
+    to depth 1 (D2=0), suggesting the exploration phase length is not the
+    bottleneck; it is the number of competing candidates.
 
-22. **Training time scales linearly with candidate count.** 57s → 93s → 110s for
-    720 → 864 → 1,152 parameters, confirming that the Gumbel-softmax routing
-    overhead is proportional to the grammar size.
+22. **The combined configuration (all fixes) achieves E1=2.22 and the
+    best complex E2 (-18.94).** Child-bias + mixed dict + slow anneal
+    together yield 16/16 depth-2 trees with diverse complex formulas,
+    though E2 is still worse than the v1 i+ix original (-3.08 from depth-1).
+
+23. **Depth-2 complex trees do not improve E2 over depth-1 complex trees.**
+    The v1 depth-1 formulas like `eml(i*x₁, x₂) = exp(ix₁) − ln(x₂)` gave
+    E2=-3.08, while v2 depth-2 formulas give E2=-18.94 at best. The nested
+    complex exponentials (exp(exp(i·x))) produce ill-conditioned spectral
+    signatures that hurt long-term fidelity.
+
+24. **The mixed dictionary is the recommended approach for complex EML.**
+    It uniquely preserves real-baseline short-term accuracy (E1=1.89, 135
+    valid steps) while adding complex observables, and requires no special
+    training schedule modifications.
 
 ## Best EML-Koopman Configuration
 

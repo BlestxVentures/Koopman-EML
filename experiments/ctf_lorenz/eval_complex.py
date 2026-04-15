@@ -1,12 +1,13 @@
 """Compare real vs complex EML-Koopman on CTF Lorenz (E1, E2).
 
-Three configurations:
-  1. Real baseline        -- use_complex=False  (original)
-  2. i-only complex       -- use_complex=True, allow_imaginary_vars=False
-  3. i+ix complex         -- use_complex=True, allow_imaginary_vars=True
-
-Each is trained from scratch with the same hyperparameters and data,
-then evaluated on short-term (E1) and long-term (E2) CTF metrics.
+Configurations:
+  1. Real baseline         -- original grammar
+  2. i+ix (original)       -- complex grammar, no fixes
+  3. i+ix + child bias     -- Fix 1: bias child-node logit by +2.0
+  4. i+ix + warm-start     -- Fix 2: pre-train real, then expand to complex
+  5. i+ix + mixed dict     -- Fix 3: 8 real + 8 complex trees
+  6. i+ix + slow anneal    -- Fix 4: 75% exploration phase, tau_start=3.0
+  7. i+ix + all fixes      -- Fix 1+3+4 combined (bias + mixed + slow anneal)
 """
 
 from __future__ import annotations
@@ -25,28 +26,16 @@ from koopman_eml.analysis import (
     prediction_rollout,
 )
 from koopman_eml.ctf import long_term_score, short_term_score
-from koopman_eml.training import train_koopman_eml
+from koopman_eml.training import train_koopman_eml, train_warmstart_complex
 from experiments.ctf_lorenz.generate_data import generate_lorenz_trajectories
-
-
-CONFIGS = {
-    "real_baseline": dict(use_complex=False, allow_imaginary_vars=False),
-    "complex_i_only": dict(use_complex=True, allow_imaginary_vars=False),
-    "complex_i_plus_ix": dict(use_complex=True, allow_imaginary_vars=True),
-}
 
 
 def _run_one(
     label: str,
     data: dict,
-    use_complex: bool,
-    allow_imaginary_vars: bool,
-    n_observables: int,
-    tree_depth: int,
-    n_epochs: int,
-    lr: float,
-    batch_size: int,
-    max_train_pairs: int,
+    model: KoopmanEML,
+    train_fn,
+    train_kwargs: dict,
     device: str,
 ) -> dict:
     print(f"\n{'=' * 70}")
@@ -56,6 +45,7 @@ def _run_one(
     X_k_np = data["X_k_train"]
     X_k1_np = data["X_k1_train"]
     rng = np.random.default_rng(0)
+    max_train_pairs = 20_000
     if len(X_k_np) > max_train_pairs:
         idx = rng.choice(len(X_k_np), max_train_pairs, replace=False)
         X_k_np, X_k1_np = X_k_np[idx], X_k1_np[idx]
@@ -63,24 +53,12 @@ def _run_one(
     X_k = torch.tensor(X_k_np, dtype=torch.float32)
     X_k1 = torch.tensor(X_k1_np, dtype=torch.float32)
 
-    model = KoopmanEML(
-        state_dim=3,
-        n_observables=n_observables,
-        tree_depth=tree_depth,
-        exp_order=10,
-        ln_order=12,
-        use_complex=use_complex,
-        allow_imaginary_vars=allow_imaginary_vars,
-    )
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"  Parameters: {n_params:,}  complex={use_complex}  imag_vars={allow_imaginary_vars}")
+    print(f"  Parameters: {n_params:,}  complex={model.use_complex}  "
+          f"mixed={model._mixed}")
 
     t0 = time.time()
-    train_koopman_eml(
-        model, X_k, X_k1,
-        n_epochs=n_epochs, lr=lr, device=device,
-        batch_size=batch_size, verbose=True,
-    )
+    train_fn(model, X_k, X_k1, device=device, verbose=True, **train_kwargs)
     train_time = time.time() - t0
 
     formulas = extract_eml_formulas(model)
@@ -100,6 +78,8 @@ def _run_one(
     e1 = short_term_score(pred, truth)
     e2 = long_term_score(pred, truth)
 
+    depth2_count = sum(1 for f in formulas if f.count("eml(") >= 2)
+
     result = {
         "label": label,
         "E1": e1,
@@ -108,12 +88,12 @@ def _run_one(
         "valid_prediction_steps": basic["valid_prediction_steps"],
         "n_params": n_params,
         "train_time_s": train_time,
-        "use_complex": use_complex,
-        "allow_imaginary_vars": allow_imaginary_vars,
+        "depth2_trees": depth2_count,
         "formulas": formulas,
     }
     print(f"\n  E1 = {e1:.2f}   E2 = {e2:.2f}   RMSE = {basic['rmse']:.4f}   "
-          f"valid_steps = {basic['valid_prediction_steps']}")
+          f"valid_steps = {basic['valid_prediction_steps']}   "
+          f"depth-2 trees = {depth2_count}/{len(formulas)}")
     return result
 
 
@@ -123,7 +103,6 @@ def eval_complex(
     n_epochs: int = 1200,
     lr: float = 3e-3,
     batch_size: int = 2048,
-    max_train_pairs: int = 20_000,
     device: str = "auto",
     output_dir: str = "results/ctf_lorenz/complex",
 ):
@@ -131,30 +110,82 @@ def eval_complex(
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
     print("#" * 70)
-    print("#  COMPLEX EML COMPARISON  --  Real vs i-only vs i+ix")
+    print("#  COMPLEX EML COMPARISON v2  --  With depth-collapse fixes")
     print("#" * 70)
 
     data = generate_lorenz_trajectories()
-
+    std_train = dict(n_epochs=n_epochs, lr=lr, batch_size=batch_size)
     all_results = {}
-    for label, cfg in CONFIGS.items():
-        all_results[label] = _run_one(
-            label=label, data=data, **cfg,
-            n_observables=n_observables, tree_depth=tree_depth,
-            n_epochs=n_epochs, lr=lr, batch_size=batch_size,
-            max_train_pairs=max_train_pairs, device=device,
-        )
+
+    # --- 1. Real baseline ---
+    model = KoopmanEML(state_dim=3, n_observables=n_observables,
+                       tree_depth=tree_depth, exp_order=10, ln_order=12)
+    all_results["real_baseline"] = _run_one(
+        "real_baseline", data, model, train_koopman_eml, std_train, device)
+
+    # --- 2. i+ix original (no fixes) ---
+    model = KoopmanEML(state_dim=3, n_observables=n_observables,
+                       tree_depth=tree_depth, exp_order=10, ln_order=12,
+                       use_complex=True, allow_imaginary_vars=True)
+    all_results["ix_original"] = _run_one(
+        "ix_original", data, model, train_koopman_eml, std_train, device)
+
+    # --- 3. Fix 1: child logit bias ---
+    model = KoopmanEML(state_dim=3, n_observables=n_observables,
+                       tree_depth=tree_depth, exp_order=10, ln_order=12,
+                       use_complex=True, allow_imaginary_vars=True,
+                       child_logit_bias=2.0)
+    all_results["ix_child_bias"] = _run_one(
+        "ix_child_bias", data, model, train_koopman_eml, std_train, device)
+
+    # --- 4. Fix 2: warm-start ---
+    model = KoopmanEML(state_dim=3, n_observables=n_observables,
+                       tree_depth=tree_depth, exp_order=10, ln_order=12,
+                       use_complex=True, allow_imaginary_vars=True)
+    warmstart_kwargs = dict(pretrain_epochs=800, complex_epochs=400,
+                            lr=lr, batch_size=batch_size)
+    all_results["ix_warmstart"] = _run_one(
+        "ix_warmstart", data, model, train_warmstart_complex,
+        warmstart_kwargs, device)
+
+    # --- 5. Fix 3: mixed dictionary (8 real + 8 complex) ---
+    model = KoopmanEML(state_dim=3, n_observables=n_observables,
+                       tree_depth=tree_depth, exp_order=10, ln_order=12,
+                       use_complex=True, allow_imaginary_vars=True,
+                       n_complex_trees=n_observables // 2)
+    all_results["ix_mixed_dict"] = _run_one(
+        "ix_mixed_dict", data, model, train_koopman_eml, std_train, device)
+
+    # --- 6. Fix 4: slow anneal ---
+    model = KoopmanEML(state_dim=3, n_observables=n_observables,
+                       tree_depth=tree_depth, exp_order=10, ln_order=12,
+                       use_complex=True, allow_imaginary_vars=True)
+    slow_train = dict(n_epochs=n_epochs, lr=lr, batch_size=batch_size,
+                      tau_start=3.0, phase1_frac=0.75, phase2_frac=0.15)
+    all_results["ix_slow_anneal"] = _run_one(
+        "ix_slow_anneal", data, model, train_koopman_eml, slow_train, device)
+
+    # --- 7. All fixes combined (bias + mixed + slow anneal) ---
+    model = KoopmanEML(state_dim=3, n_observables=n_observables,
+                       tree_depth=tree_depth, exp_order=10, ln_order=12,
+                       use_complex=True, allow_imaginary_vars=True,
+                       child_logit_bias=2.0,
+                       n_complex_trees=n_observables // 2)
+    all_results["ix_all_fixes"] = _run_one(
+        "ix_all_fixes", data, model, train_koopman_eml, slow_train, device)
 
     # --- Summary ---
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 80)
     print("  COMPARISON SUMMARY")
-    print("=" * 70)
-    print(f"  {'Config':<25} {'E1':>8} {'E2':>8} {'RMSE':>8} {'Steps':>7} {'Params':>8} {'Time':>7}")
-    print("  " + "-" * 75)
+    print("=" * 80)
+    print(f"  {'Config':<22} {'E1':>7} {'E2':>7} {'RMSE':>7} {'Steps':>6} "
+          f"{'D2':>4} {'Params':>7} {'Time':>6}")
+    print("  " + "-" * 72)
     for label, r in all_results.items():
-        print(f"  {label:<25} {r['E1']:>8.2f} {r['E2']:>8.2f} "
-              f"{r['rmse']:>8.4f} {r['valid_prediction_steps']:>7} "
-              f"{r['n_params']:>8,} {r['train_time_s']:>6.0f}s")
+        print(f"  {label:<22} {r['E1']:>7.2f} {r['E2']:>7.2f} "
+              f"{r['rmse']:>7.4f} {r['valid_prediction_steps']:>6} "
+              f"{r['depth2_trees']:>4} {r['n_params']:>7,} "
+              f"{r['train_time_s']:>5.0f}s")
 
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -162,11 +193,11 @@ def eval_complex(
         k: {kk: vv for kk, vv in v.items() if kk != "formulas"}
         for k, v in all_results.items()
     }
-    with open(out / "complex_comparison.json", "w") as f:
+    with open(out / "complex_comparison_v2.json", "w") as f:
         json.dump(serializable, f, indent=2)
 
     formulas_out = {k: v["formulas"] for k, v in all_results.items()}
-    with open(out / "complex_formulas.json", "w") as f:
+    with open(out / "complex_formulas_v2.json", "w") as f:
         json.dump(formulas_out, f, indent=2)
 
     print(f"\n  Results saved to {out}")

@@ -153,6 +153,7 @@ class EMLTreeVectorized(nn.Module):
         n_vars: int = 1,
         use_complex: bool = False,
         allow_imaginary_vars: bool = False,
+        child_logit_bias: float = 0.0,
     ):
         super().__init__()
         self.n_trees = n_trees
@@ -169,9 +170,10 @@ class EMLTreeVectorized(nn.Module):
             is_leaf = level == 0
             n_nodes = self.nodes_per_level[level]
             n_choices = 1 + n_extra + n_vars + (0 if is_leaf else 1)
-            self.level_logits.append(
-                nn.Parameter(torch.randn(n_trees, n_nodes, n_choices, 2) * 0.1)
-            )
+            logits = torch.randn(n_trees, n_nodes, n_choices, 2) * 0.1
+            if not is_leaf and child_logit_bias != 0.0:
+                logits[:, :, -1, :] += child_logit_bias
+            self.level_logits.append(nn.Parameter(logits))
 
     def _n_base_candidates(self) -> int:
         """Number of candidates before the f_child slot."""

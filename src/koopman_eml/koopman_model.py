@@ -35,6 +35,8 @@ class KoopmanEML(nn.Module):
         use_complex: bool = False,
         allow_imaginary_vars: bool = False,
         clamp_input: float = 5.0,
+        child_logit_bias: float = 0.0,
+        n_complex_trees: int | None = None,
     ):
         super().__init__()
         self.state_dim = state_dim
@@ -45,10 +47,28 @@ class KoopmanEML(nn.Module):
         self.allow_imaginary_vars = allow_imaginary_vars
         self.clamp_input = clamp_input
 
-        self.dictionary = EMLTreeVectorized(
-            n_trees=n_observables, depth=tree_depth, n_vars=state_dim,
-            use_complex=use_complex, allow_imaginary_vars=allow_imaginary_vars,
-        )
+        self._mixed = use_complex and n_complex_trees is not None and n_complex_trees < n_observables
+        if self._mixed:
+            n_real = n_observables - n_complex_trees
+            self.n_real_trees = n_real
+            self.dict_real = EMLTreeVectorized(
+                n_trees=n_real, depth=tree_depth, n_vars=state_dim,
+                use_complex=False, allow_imaginary_vars=False,
+                child_logit_bias=child_logit_bias,
+            )
+            self.dict_complex = EMLTreeVectorized(
+                n_trees=n_complex_trees, depth=tree_depth, n_vars=state_dim,
+                use_complex=True, allow_imaginary_vars=allow_imaginary_vars,
+                child_logit_bias=child_logit_bias,
+            )
+            self.dictionary = self.dict_complex
+        else:
+            self.n_real_trees = 0
+            self.dictionary = EMLTreeVectorized(
+                n_trees=n_observables, depth=tree_depth, n_vars=state_dim,
+                use_complex=use_complex, allow_imaginary_vars=allow_imaginary_vars,
+                child_logit_bias=child_logit_bias,
+            )
 
         if use_complex:
             K_init = (
@@ -68,6 +88,16 @@ class KoopmanEML(nn.Module):
 
     def lift(self, x: torch.Tensor, tau: float = 1.0) -> torch.Tensor:
         """Lift state to observable space: [B, state_dim] -> [B, n_obs]."""
+        if self._mixed:
+            g_real = self.dict_real(
+                x, tau=tau, exp_order=self.exp_order, ln_order=self.ln_order,
+                use_complex=False, clamp_input=self.clamp_input,
+            )
+            g_cplx = self.dict_complex(
+                x, tau=tau, exp_order=self.exp_order, ln_order=self.ln_order,
+                use_complex=True, clamp_input=self.clamp_input,
+            )
+            return torch.cat([g_real.to(g_cplx.dtype), g_cplx], dim=-1)
         return self.dictionary(
             x, tau=tau, exp_order=self.exp_order, ln_order=self.ln_order,
             use_complex=self.use_complex, clamp_input=self.clamp_input,
