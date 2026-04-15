@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Koopman Operator Lifting via EML Observable Dictionaries</title>
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['$','$']],
+    displayMath: [['$$','$$']],
+    macros: {
+      eml: '\\operatorname{eml}',
+      R: '\\mathbb{R}',
+      C: '\\mathbb{C}',
+      N: '\\mathbb{N}',
+      bx: '\\mathbf{x}',
+      bg: '\\mathbf{g}',
+      bK: '\\mathbf{K}',
+      bC: '\\mathbf{C}',
+    }
+  },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #faf9f6;
+    --fg: #1a1a1a;
+    --accent: #8b3a3a;
+    --accent2: #2d5a27;
+    --border: #d4c5a9;
+    --code-bg: #f0ede6;
+    --sidebar: #e8e2d6;
+    --note-bg: #eef3ed;
+    --note-border: #6b8e64;
+    --warn-bg: #fdf0e8;
+    --warn-border: #c4713b;
+    --section-num: #6b6b6b;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 18px;
+    line-height: 1.7;
+    color: var(--fg);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 60px 40px 100px;
+  }
+
+  /* --- Header --- */
+  header {
+    border-bottom: 3px solid var(--fg);
+    padding-bottom: 30px;
+    margin-bottom: 50px;
+  }
+
+  header h1 {
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+
+  header .subtitle {
+    font-size: 18px;
+    font-style: italic;
+    color: var(--section-num);
+    margin-bottom: 16px;
+  }
+
+  header .meta {
+    font-size: 14px;
+    color: var(--section-num);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* --- Sections --- */
+  h2 {
+    font-size: 24px;
+    font-weight: 600;
+    margin-top: 50px;
+    margin-bottom: 16px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    color: var(--accent);
+  }
+
+  h2 .secnum {
+    color: var(--section-num);
+    font-weight: 300;
+    margin-right: 8px;
+  }
+
+  h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin-top: 32px;
+    margin-bottom: 10px;
+  }
+
+  h3 .secnum {
+    color: var(--section-num);
+    font-weight: 300;
+    margin-right: 6px;
+  }
+
+  p { margin-bottom: 14px; }
+
+  /* --- Math display --- */
+  .math-block {
+    margin: 24px 0;
+    padding: 16px 24px;
+    background: var(--code-bg);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 4px 4px 0;
+    overflow-x: auto;
+  }
+
+  .math-block.definition {
+    border-left-color: var(--accent2);
+    background: var(--note-bg);
+  }
+
+  .eq-label {
+    float: right;
+    color: var(--section-num);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  /* --- Notes and warnings --- */
+  .note {
+    margin: 24px 0;
+    padding: 16px 20px;
+    background: var(--note-bg);
+    border-left: 3px solid var(--note-border);
+    border-radius: 0 4px 4px 0;
+    font-size: 16px;
+  }
+
+  .note strong { color: var(--accent2); }
+
+  .warn {
+    margin: 24px 0;
+    padding: 16px 20px;
+    background: var(--warn-bg);
+    border-left: 3px solid var(--warn-border);
+    border-radius: 0 4px 4px 0;
+    font-size: 16px;
+  }
+
+  .warn strong { color: var(--warn-border); }
+
+  /* --- Code --- */
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    background: var(--code-bg);
+    padding: 2px 5px;
+    border-radius: 3px;
+  }
+
+  pre {
+    margin: 20px 0;
+    padding: 20px;
+    background: #2b2b2b;
+    color: #e0ddd4;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  pre .comment { color: #7a9a6a; }
+  pre .keyword { color: #cc7832; }
+  pre .string { color: #6a9955; }
+  pre .func { color: #dcdcaa; }
+
+  /* --- Tables --- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-size: 16px;
+  }
+
+  th {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--fg);
+    font-weight: 600;
+    font-size: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  td {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tr:last-child td { border-bottom: 2px solid var(--fg); }
+
+  /* --- Lists --- */
+  ol, ul {
+    margin: 14px 0 14px 28px;
+  }
+
+  li {
+    margin-bottom: 8px;
+  }
+
+  /* --- Misc --- */
+  .toc {
+    margin: 30px 0;
+    padding: 20px 28px;
+    background: var(--sidebar);
+    border-radius: 6px;
+  }
+
+  .toc h3 {
+    margin-top: 0;
+    font-size: 15px;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--section-num);
+  }
+
+  .toc ol { margin: 10px 0 0 20px; font-size: 16px; }
+  .toc li { margin-bottom: 4px; }
+  .toc a { color: var(--fg); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 40px 0;
+  }
+
+  .algorithm {
+    margin: 24px 0;
+    padding: 20px 24px;
+    border: 2px solid var(--fg);
+    border-radius: 4px;
+    background: #fff;
+  }
+
+  .algorithm h4 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .algorithm ol { margin-left: 22px; }
+  .algorithm li { font-size: 16px; margin-bottom: 6px; }
+
+  @media print {
+    .page { max-width: 100%; padding: 30px; }
+    pre { white-space: pre-wrap; }
+    .math-block { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>Koopman Operator Lifting via EML Observable Dictionaries</h1>
+  <div class="subtitle">A GPU-Optimized Framework Using the Exp-Minus-Log Sheffer Operator</div>
+  <div class="meta">Working Draft &mdash; April 2026 &mdash; Jim Beaver</div>
+</header>
+
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#s1">The EML Operator</a></li>
+    <li><a href="#s2">Koopman Operator Background</a></li>
+    <li><a href="#s3">EML Trees as Koopman Observables</a></li>
+    <li><a href="#s4">Taylor-Series GPU Primitives</a></li>
+    <li><a href="#s5">Vectorized Tree Architecture</a></li>
+    <li><a href="#s6">Training Pipeline</a></li>
+    <li><a href="#s7">Eigendecomposition &amp; Interpretability</a></li>
+    <li><a href="#s8">Connection to Information Geometry</a></li>
+    <li><a href="#s9">Open Questions &amp; Next Steps</a></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="s1"><span class="secnum">1</span> The EML Operator</h2>
+
+<p>
+  Odrzywołek (2026) discovered that a single binary operator, paired with the constant $1$,
+  can generate <em>every</em> standard elementary function &mdash; the continuous-math analog of the NAND gate
+  for Boolean logic.
+</p>
+
+<div class="math-block definition">
+  <span class="eq-label">(1)</span>
+  $$\eml(x, y) \;=\; \exp(x) - \ln(y)$$
+</div>
+
+<p>
+  The grammar is context-free and trivially simple:
+</p>
+
+<div class="math-block">
+  $$S \;\to\; 1 \;\mid\; \eml(S, S)$$
+</div>
+
+<p>
+  Every elementary expression becomes a <strong>binary tree of identical nodes</strong>.
+  Key identities include:
+</p>
+
+<table>
+  <tr><th>Function</th><th>EML Form</th><th>Depth</th></tr>
+  <tr><td>$e^x$</td><td>$\eml(x, 1)$</td><td>1</td></tr>
+  <tr><td>$e$</td><td>$\eml(1, 1)$</td><td>1</td></tr>
+  <tr><td>$\ln(x)$</td><td>$\eml\!\bigl(1,\;\eml(\eml(1, x),\; 1)\bigr)$</td><td>3</td></tr>
+  <tr><td>$-x$</td><td>depth-5 composition</td><td>5</td></tr>
+  <tr><td>$x \times y$</td><td>depth-8 composition</td><td>8</td></tr>
+</table>
+
+<p>
+  Internally, computations proceed over $\C$ via the principal branch of the complex logarithm.
+  Trigonometric functions emerge through Euler's formula: $e^{i\varphi} = \cos\varphi + i\sin\varphi$,
+  with $i = \sqrt{-1}$ obtainable from $\ln(-1) = i\pi$.
+</p>
+
+<!-- ============================================================ -->
+<h2 id="s2"><span class="secnum">2</span> Koopman Operator Background</h2>
+
+<p>
+  Consider a discrete-time nonlinear dynamical system on a state space $\mathcal{M} \subseteq \R^n$:
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(2)</span>
+  $$\bx_{k+1} = F(\bx_k)$$
+</div>
+
+<p>
+  The <strong>Koopman operator</strong> $\mathcal{K}$ acts on scalar-valued observables
+  $g : \mathcal{M} \to \C$ by composition with the dynamics:
+</p>
+
+<div class="math-block definition">
+  <span class="eq-label">(3)</span>
+  $$[\mathcal{K}\, g](\bx) \;=\; g\bigl(F(\bx)\bigr)$$
+</div>
+
+<p>
+  This is an <em>infinite-dimensional linear operator</em>, even when $F$ is nonlinear.
+  The key insight: if we find a finite set of observables $\bg(\bx) = [g_1(\bx), \ldots, g_N(\bx)]^\top$
+  that span a $\mathcal{K}$-invariant subspace, then the dynamics in lifted coordinates become:
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(4)</span>
+  $$\bg(\bx_{k+1}) \;=\; \bK \;\bg(\bx_k)$$
+</div>
+
+<p>
+  where $\bK \in \C^{N \times N}$ is a <strong>finite-dimensional Koopman matrix</strong>.
+  The central problem is choosing the <em>dictionary</em> of observables $\{g_j\}$.
+  Traditional approaches (EDMD, kernel EDMD) hand-select bases &mdash; polynomials, RBFs, Fourier modes,
+  delay coordinates &mdash; and hope they span the relevant invariant subspace.
+  This is ad hoc and offers no completeness guarantee.
+</p>
+
+<!-- ============================================================ -->
+<h2 id="s3"><span class="secnum">3</span> EML Trees as Koopman Observables</h2>
+
+<p>
+  <strong>Core idea:</strong> Use parameterized EML trees as a learnable, complete dictionary
+  of observable functions. Since every elementary function is representable as an EML tree,
+  the search space is guaranteed to contain the true Koopman eigenfunctions whenever they are
+  elementary &mdash; which holds for a wide class of physically-motivated systems (harmonic oscillators,
+  Lotka&ndash;Volterra, pendula, etc.).
+</p>
+
+<h3><span class="secnum">3.1</span> The Master Formula</h3>
+
+<p>
+  Following Section 4.3 of the paper, each input to an EML node is parameterized as:
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(5)</span>
+  $$\text{input}_i \;=\; \alpha_i + \beta_i \cdot x + \gamma_i \cdot f_{\text{child}}$$
+</div>
+
+<p>
+  where $(\alpha_i, \beta_i, \gamma_i)$ are trainable weights that select among:
+</p>
+
+<table>
+  <tr><th>Selection</th><th>$\alpha_i$</th><th>$\beta_i$</th><th>$\gamma_i$</th><th>Result</th></tr>
+  <tr><td>Constant 1</td><td>1</td><td>0</td><td>0</td><td>$1$</td></tr>
+  <tr><td>Input variable</td><td>0</td><td>1</td><td>0</td><td>$x$</td></tr>
+  <tr><td>Child output</td><td>0</td><td>0</td><td>1</td><td>$f_{\text{child}}$</td></tr>
+</table>
+
+<p>
+  During training, $(\alpha, \beta, \gamma)$ are treated as <strong>Gumbel-softmax logits</strong>
+  normalized to a simplex. Temperature $\tau$ anneals from soft (exploration) to hard (discrete).
+  After convergence, the weights snap to one-hot $\{0, 1\}$, yielding an <em>exact symbolic expression</em>.
+</p>
+
+<h3><span class="secnum">3.2</span> Full Level-2 Example</h3>
+
+<p>The complete level-2 master formula (14 parameters for univariate $x$) is:</p>
+
+<div class="math-block">
+  <span class="eq-label">(6)</span>
+  $$F(x) = \eml\!\Bigl[\;\alpha_1 + \beta_1 x + \gamma_1\,\eml(\alpha_3 + \beta_3 x,\;\alpha_4 + \beta_4 x),\;\;\alpha_2 + \beta_2 x + \gamma_2\,\eml(\alpha_5 + \beta_5 x,\;\alpha_6 + \beta_6 x)\;\Bigr]$$
+</div>
+
+<p>
+  Setting $\alpha_1\!=\!0, \beta_1\!=\!1, \gamma_1\!=\!0$ and $\alpha_2\!=\!1, \beta_2\!=\!\gamma_2\!=\!0$
+  recovers $\exp(x)$. The general depth-$d$ formula has $5 \cdot 2^d - 6$ parameters.
+</p>
+
+<h3><span class="secnum">3.3</span> Koopman Dictionary Construction</h3>
+
+<p>
+  Construct $N$ independent EML trees, each of depth $d$, to form the observable dictionary:
+</p>
+
+<div class="math-block definition">
+  <span class="eq-label">(7)</span>
+  $$\bg_\theta(\bx) \;=\; \bigl[\,T_1^\theta(\bx),\;\; T_2^\theta(\bx),\;\; \ldots,\;\; T_N^\theta(\bx)\,\bigr]^\top$$
+</div>
+
+<p>
+  where $T_j^\theta$ denotes the $j$-th EML tree with trainable routing parameters $\theta$.
+  The full Koopman model is then:
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(8)</span>
+  $$\bg_\theta(\bx_{k+1}) \;\approx\; \bK\;\bg_\theta(\bx_k), \qquad \bx_k \;\approx\; \bC\;\bg_\theta(\bx_k)$$
+</div>
+
+<p>
+  where $\bK \in \R^{N \times N}$ is the Koopman matrix and $\bC \in \R^{n \times N}$ is the decoder
+  (reconstruction map).
+</p>
+
+<!-- ============================================================ -->
+<h2 id="s4"><span class="secnum">4</span> Taylor-Series GPU Primitives</h2>
+
+<p>
+  The key performance insight: both $\exp$ and $\ln$ can be replaced by <strong>polynomial approximations
+  in Horner form</strong>, reducing the entire EML operator to fused multiply-add (FMA) instructions
+  with zero transcendental function calls. This is critical for GPU throughput, especially with
+  nested tree compositions where each node calls EML.
+</p>
+
+<h3><span class="secnum">4.1</span> Taylor Exponential with Range Reduction</h3>
+
+<p>
+  Decompose $x = k \ln 2 + r$ where $k = \lfloor x / \ln 2 \rceil$ and $|r| \le \frac{\ln 2}{2} \approx 0.347$.
+  Then:
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(9)</span>
+  $$\exp(x) = 2^k \cdot \exp(r), \qquad \exp(r) = \sum_{n=0}^{M} \frac{r^n}{n!}$$
+</div>
+
+<p>
+  The Taylor series is evaluated in <strong>Horner form</strong> (innermost term outward):
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(10)</span>
+  $$\exp(r) \;=\; 1 + r\!\left(1 + \frac{r}{2}\!\left(1 + \frac{r}{3}\!\left(1 + \cdots \frac{r}{M}\right)\!\right)\!\right)$$
+</div>
+
+<p>
+  Each step is one multiply-add. With $|r| \le 0.347$, order $M = 12$ gives error
+  $\lesssim 10^{-16}$ (double precision). The $2^k$ scaling is a single <code>ldexp</code>-equivalent
+  operation.
+</p>
+
+<h3><span class="secnum">4.2</span> Taylor Logarithm via Arctanh</h3>
+
+<p>
+  Range-reduce: $y = m \cdot 2^e$ with $m \in [0.5, 1.0)$, so $\ln(y) = e \ln 2 + \ln(m)$.
+  Then use the <strong>arctanh series</strong>, which converges much faster than the naive $\ln(1+t)$ expansion:
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(11)</span>
+  $$\ln(m) \;=\; 2\,\operatorname{arctanh}\!\left(\frac{m-1}{m+1}\right) \;=\; 2\sum_{k=0}^{M}\frac{u^{2k+1}}{2k+1}, \qquad u = \frac{m-1}{m+1}$$
+</div>
+
+<p>
+  For $m \in [0.5, 1)$ we have $|u| \le \tfrac{1}{3}$, so this converges rapidly.
+  Again evaluated via Horner:
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(12)</span>
+  $$\sum_{k=0}^{M} \frac{u^{2k+1}}{2k+1} \;=\; u\!\left(\frac{1}{1} + u^2\!\left(\frac{1}{3} + u^2\!\left(\frac{1}{5} + \cdots\right)\!\right)\!\right)$$
+</div>
+
+<p>Order $M = 16$ gives machine-epsilon accuracy for $\ln$.</p>
+
+<h3><span class="secnum">4.3</span> Combined EML Primitive</h3>
+
+<p>The GPU-optimized EML is then:</p>
+
+<div class="math-block definition">
+  <span class="eq-label">(13)</span>
+  $$\eml_{\text{Taylor}}(x, y) \;=\; \text{horner\_exp}(x, M_e) \;-\; \text{horner\_ln}(y, M_l)$$
+</div>
+
+<p>
+  with gradients $\frac{\partial}{\partial x}\eml = \exp(x)$ and
+  $\frac{\partial}{\partial y}\eml = -\frac{1}{y}$, both computable via the same polynomial machinery.
+  The custom <code>torch.autograd.Function</code> avoids redundant recomputation in the backward pass.
+</p>
+
+<div class="note">
+  <strong>Performance note:</strong> For a depth-$d$ tree with $N$ parallel observables evaluated over
+  a batch of size $B$, the forward pass requires $d$ sequential EML calls, each operating on
+  tensors of shape $[B, N, 2^{d-1-l}]$ at level $l$. All nodes at the same depth are computed in a
+  single batched call &mdash; no Python loops over individual nodes.
+</div>
+
+<!-- ============================================================ -->
+<h2 id="s5"><span class="secnum">5</span> Vectorized Tree Architecture</h2>
+
+<h3><span class="secnum">5.1</span> Routing via Gumbel-Softmax</h3>
+
+<p>
+  At each EML node $i$, both the left and right inputs are selected from a candidate set
+  $\mathcal{C}_i = \{1, x_0, x_1, \ldots, x_{n-1}\}$ (for leaves) or
+  $\mathcal{C}_i = \{1, x_0, \ldots, x_{n-1}, f_{\text{child}}\}$ (for interior nodes).
+  The selection is parameterized by logits $\ell_i \in \R^{|\mathcal{C}_i|}$:
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(14)</span>
+  $$w_i^{(j)} = \frac{\exp\!\bigl((\ell_i^{(j)} + G_j)/\tau\bigr)}{\sum_k \exp\!\bigl((\ell_i^{(k)} + G_k)/\tau\bigr)}, \qquad G_j \sim \text{Gumbel}(0,1)$$
+</div>
+
+<p>
+  The selected input is $\sum_j w_i^{(j)} c_j$ where $c_j \in \mathcal{C}_i$.
+  As $\tau \to 0$, this converges to hard one-hot selection.
+</p>
+
+<h3><span class="secnum">5.2</span> Tensor Layout</h3>
+
+<p>
+  All $N$ trees are packed into contiguous parameter tensors, one per tree level:
+</p>
+
+<div class="math-block">
+  $$\text{level\_logits}[l] \;\in\; \R^{N \times n_l \times |\mathcal{C}_l| \times 2}$$
+</div>
+
+<p>
+  where $n_l = 2^{d-1-l}$ is the number of nodes at level $l$, and the trailing dimension 2 indexes
+  left/right inputs. Bottom-up evaluation proceeds as $d$ sequential batched operations:
+</p>
+
+<div class="algorithm">
+  <h4>Algorithm 1: Vectorized EML Tree Evaluation</h4>
+  <ol>
+    <li><strong>for</strong> $l = 0, 1, \ldots, d-1$ (bottom to top):</li>
+    <li>&emsp; Compute Gumbel-softmax weights: $W \in \R^{B \times N \times n_l \times |\mathcal{C}_l| \times 2}$</li>
+    <li>&emsp; Assemble candidate tensors (const $1$, input vars, child outputs from level $l\!-\!1$)</li>
+    <li>&emsp; Weighted selection: $\text{eml\_x}, \text{eml\_y} \in \R^{B \times N \times n_l}$</li>
+    <li>&emsp; Clamp inputs: $\text{eml\_x} \gets \text{clamp}(\text{eml\_x}, -C, C)$</li>
+    <li>&emsp; Batched EML: $\text{out}_l = \eml_{\text{Taylor}}(\text{eml\_x},\; \text{eml\_y})$</li>
+    <li><strong>return</strong> $\text{out}_{d-1} \in \R^{B \times N}$ &emsp;(root outputs = lifted state)</li>
+  </ol>
+</div>
+
+<h3><span class="secnum">5.3</span> Parameter Counts</h3>
+
+<table>
+  <tr><th>Depth $d$</th><th>Params per tree</th><th>$N=16$ trees</th><th>$N=32$ trees</th><th>Expressible</th></tr>
+  <tr><td>2</td><td>14</td><td>224</td><td>448</td><td>$e^x$, $\ln x$, $e^{e^x}$</td></tr>
+  <tr><td>3</td><td>34</td><td>544</td><td>1,088</td><td>$-x$, $1/x$, most unary</td></tr>
+  <tr><td>4</td><td>74</td><td>1,184</td><td>2,368</td><td>$x+y$, $x \cdot y$, trig</td></tr>
+  <tr><td>5</td><td>154</td><td>2,464</td><td>4,928</td><td>Full calculator</td></tr>
+</table>
+
+<p>
+  These are tiny by modern ML standards, but the training landscape has non-trivial basins.
+  The paper reports ~25% blind recovery at depth 3&ndash;4, improving to 100% with warm-start initialization.
+</p>
+
+<!-- ============================================================ -->
+<h2 id="s6"><span class="secnum">6</span> Training Pipeline</h2>
+
+<h3><span class="secnum">6.1</span> Loss Function</h3>
+
+<p>Given trajectory data $\{(\bx_k, \bx_{k+1})\}_{k=1}^{K}$, the joint objective is:</p>
+
+<div class="math-block definition">
+  <span class="eq-label">(15)</span>
+  $$\mathcal{L}(\theta, \bK, \bC) \;=\; \underbrace{\sum_k \bigl\|\bg_\theta(\bx_{k+1}) - \bK\,\bg_\theta(\bx_k)\bigr\|^2}_{\text{prediction}} \;+\; \lambda\,\underbrace{\sum_k \bigl\|\bx_k - \bC\,\bg_\theta(\bx_k)\bigr\|^2}_{\text{reconstruction}} \;+\; \mu\,\underbrace{\|\bK\|_F^2}_{\text{regularization}}$$
+</div>
+
+<p>
+  All three components are differentiable through the EML trees (the Taylor polynomials
+  have clean analytic gradients). Standard backpropagation with Adam applies.
+</p>
+
+<h3><span class="secnum">6.2</span> Three-Phase Annealing Schedule</h3>
+
+<div class="algorithm">
+  <h4>Algorithm 2: Training Protocol</h4>
+  <ol>
+    <li><strong>Phase 1 &mdash; Exploration</strong> (epochs $0$ to $0.6T$):
+      <br>Anneal $\tau$ from $\tau_{\max}$ (e.g., 2.0) to $1.0$.
+      All parameters ($\theta, \bK, \bC$) are trainable. Gumbel noise encourages exploration of
+      different routing configurations.</li>
+    <li><strong>Phase 2 &mdash; Hardening</strong> (epochs $0.6T$ to $0.9T$):
+      <br>Anneal $\tau$ from $1.0$ to $\tau_{\min}$ (e.g., 0.1).
+      Routing weights sharpen toward discrete selections. The trees commit to specific
+      functional forms.</li>
+    <li><strong>Phase 3 &mdash; Snap &amp; Fine-Tune</strong> (epochs $0.9T$ to $T$):
+      <br>Snap all routing logits to hard one-hot (argmax). Freeze tree parameters $\theta$.
+      Fine-tune only $\bK$ and $\bC$ at reduced learning rate.</li>
+  </ol>
+</div>
+
+<div class="warn">
+  <strong>Overflow hazard:</strong> Nested EML compositions produce iterated exponentials
+  ($e^{e^{e^x}}$) during exploration. Clamp EML inputs to $[-C, C]$ with $C \approx 20$
+  and normalize state data to $[-1, 1]$ before lifting.
+</div>
+
+<h3><span class="secnum">6.3</span> Warm-Start Strategies</h3>
+
+<p>
+  The paper reports that convergence from random initialization degrades sharply beyond depth 4.
+  For Koopman applications, two warm-start strategies can dramatically improve recovery:
+</p>
+
+<ol>
+  <li><strong>EDMD bootstrap:</strong> Run standard EDMD with a polynomial dictionary first.
+    Initialize EML tree routing to mimic the best polynomial observables (since polynomials
+    are elementary, they have EML representations).</li>
+  <li><strong>Curriculum depth:</strong> Train at depth 2 until convergence, then grow each tree
+    by one level (appending new leaf nodes with random logits) and continue training.
+    The existing structure provides a strong initialization for the expanded tree.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="s7"><span class="secnum">7</span> Eigendecomposition &amp; Interpretability</h2>
+
+<p>After training and snapping, we have an explicit Koopman matrix $\bK$. Its eigendecomposition:</p>
+
+<div class="math-block">
+  <span class="eq-label">(16)</span>
+  $$\bK = \bV \,\Lambda\, \bV^{-1}, \qquad \Lambda = \operatorname{diag}(\lambda_1, \ldots, \lambda_N)$$
+</div>
+
+<p>yields:</p>
+
+<ul>
+  <li><strong>Koopman eigenvalues</strong> $\lambda_j$: encode frequencies ($\omega_j = \operatorname{Im}(\ln \lambda_j)$)
+    and growth/decay rates ($\sigma_j = \operatorname{Re}(\ln \lambda_j)$).</li>
+  <li><strong>Koopman eigenfunctions</strong>: $\varphi_j(\bx) = \mathbf{v}_j^\top\, \bg_\theta(\bx)$, i.e.,
+    linear combinations of the snapped EML observables. Since each $g_i$ is now a closed-form
+    elementary expression, $\varphi_j$ is also elementary &mdash; fully interpretable.</li>
+  <li><strong>Koopman modes</strong>: $\mathbf{m}_j = \bC\,\mathbf{v}_j$, linking each eigenfunction
+    to its contribution in state space.</li>
+</ul>
+
+<p>
+  This is a fundamental advantage over deep-learning Koopman approaches (e.g., LRAN, DeepKoopman):
+  instead of opaque neural network observables, we get <em>symbolic formulas</em> that can be
+  analyzed, simplified, and compared to physics.
+</p>
+
+<!-- ============================================================ -->
+<h2 id="s8"><span class="secnum">8</span> Connection to Information Geometry</h2>
+
+<p>
+  The Koopman eigenfunctions $\{\varphi_j\}$ define a natural coordinate system on the state manifold
+  $\mathcal{M}$. The lifting map $\bg_\theta : \mathcal{M} \to \R^N$ induces a
+  <strong>pullback metric</strong> on $\mathcal{M}$:
+</p>
+
+<div class="math-block">
+  <span class="eq-label">(17)</span>
+  $$(G_\theta)_{ab} \;=\; \sum_{j=1}^{N} \frac{\partial g_j}{\partial x^a}\,\frac{\partial g_j}{\partial x^b}$$
+</div>
+
+<p>
+  When $\bg_\theta$ consists of snapped EML trees, each $g_j$ is a known elementary function,
+  so $G_\theta$ is computable in closed form. This connects directly to the
+  <strong>Fisher information metric</strong> if the observables are interpreted as sufficient statistics
+  of a parametric family.
+</p>
+
+<p>
+  For multi-agent RL systems (e.g., Bug World), this enables:
+</p>
+
+<ul>
+  <li><strong>Behavioral basis decomposition:</strong> The Koopman eigenfunctions separate the dynamics
+    into independent modes. Each mode corresponds to a distinct "behavioral basis" &mdash; e.g.,
+    pursuit, evasion, foraging &mdash; with its own characteristic timescale $1/\sigma_j$ and
+    frequency $\omega_j$.</li>
+  <li><strong>Natural gradient on policy manifolds:</strong> The pullback metric $G_\theta$ provides the
+    Riemannian structure needed for natural gradient descent on the policy manifold. With EML
+    observables, this metric has an explicit elementary form rather than requiring numerical
+    estimation of the Fisher matrix.</li>
+  <li><strong>Geodesic policy interpolation:</strong> Geodesics on $(\mathcal{M}, G_\theta)$ define
+    "shortest paths" between behavioral strategies, enabling principled policy interpolation
+    and transfer.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="s9"><span class="secnum">9</span> Open Questions &amp; Next Steps</h2>
+
+<h3><span class="secnum">9.1</span> Immediate Implementation Tasks</h3>
+
+<ol>
+  <li><strong>Complex mode:</strong> Predator-prey dynamics (Bug World) have oscillatory Koopman
+    eigenfunctions. The implementation needs complex128 Taylor primitives throughout the tree,
+    with final projection to reals. The complex exp/ln Taylor series are straightforward
+    extensions but need careful handling of branch cuts.</li>
+  <li><strong>Benchmarking:</strong> Compare EML dictionary against polynomial EDMD and deep Koopman
+    (autoencoder) on standard systems: Duffing oscillator, Van der Pol, Lorenz, and
+    Lotka-Volterra. Metrics: prediction horizon, reconstruction error, eigenfunction
+    interpretability.</li>
+  <li><strong>Scaling:</strong> Profile GPU utilization for $N = 64$ trees at depth 5 ($\sim$10K params).
+    The bottleneck is likely the $d$ sequential levels, not the within-level parallelism.</li>
+</ol>
+
+<h3><span class="secnum">9.2</span> Research Questions</h3>
+
+<ol>
+  <li>Can EML trees discover non-obvious Koopman eigenfunctions that polynomial/RBF dictionaries miss?
+    (e.g., $g(x) = \ln(1 + e^{x^2})$ type observables)</li>
+  <li>Does the EML master formula provide a better loss landscape for Koopman learning than
+    neural network encoders? (The discrete-snap property suggests yes for shallow trees.)</li>
+  <li>Can the ternary EML variant $T(x,y,z) = e^x / \ln x \times \ln z / e^y$ (requiring no
+    distinguished constant) improve training convergence?</li>
+  <li>Is there a connection between EML tree depth and the spectral complexity of the Koopman
+    operator for a given system?</li>
+</ol>
+
+<h3><span class="secnum">9.3</span> Longer-Term Directions</h3>
+
+<ol>
+  <li><strong>Continuous-depth EML trees</strong> (neural ODE analog): parameterize tree growth as
+    a continuous process, enabling adaptive-depth observables.</li>
+  <li><strong>EML-KAN hybrid:</strong> Use EML nodes as the activation functions in a
+    Kolmogorov&ndash;Arnold network, combining KAN's universal approximation with EML's
+    symbolic snap property.</li>
+  <li><strong>Hardware EML:</strong> The paper notes potential for FPGA/analog circuit implementation.
+    A dedicated EML coprocessor could evaluate deep trees in $O(d)$ clock cycles.</li>
+</ol>
+
+<hr>
+
+<p style="font-size: 14px; color: var(--section-num); text-align: center;">
+  Reference: Odrzywołek, A. (2026). <em>All elementary functions from a single operator.</em>
+  arXiv:2603.21852v2.
+  <br>Implementation: <code>koopman_eml.py</code> &mdash; PyTorch module with Taylor-optimized EML primitives.
+</p>
+
+</div>
+</body>
+</html>

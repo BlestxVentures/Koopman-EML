@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "koopman-eml"
+version = "0.1.0"
+description = "Koopman operator lifting via EML (Exp-Minus-Log) observable dictionaries"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Jim Beaver"},
+]
+keywords = ["koopman", "eml", "symbolic-regression", "dynamical-systems", "sindy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "seaborn>=0.12",
+    "tqdm>=4.65",
+]
+
+[project.optional-dependencies]
+sindy = ["pysindy>=2.0"]
+pysr = ["pysr>=0.18"]
+ctf = ["ctf4science"]
+all = ["pysindy>=2.0", "pysr>=0.18", "ctf4science"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/BlestX/Koopman-EML"
+Repository = "https://github.com/BlestX/Koopman-EML"
+Issues = "https://github.com/BlestX/Koopman-EML/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
