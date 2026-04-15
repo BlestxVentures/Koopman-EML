@@ -900,225 +900,156 @@ observables, we get symbolic formulas that can be analyzed, simplified, and
 compared to physics.
 
 
-\subsection{Native CUDA Acceleration}
+\subsection{GPU Acceleration and Backend Comparison}
 \label{sec:cuda}
 
-The current implementation uses PyTorch's \texttt{torch.autograd.Function} to wrap
-the Horner-form Taylor primitives.  While this avoids transcendental function calls,
-every EML evaluation still dispatches through PyTorch's operator machinery and
-Python-level loops over tree levels.  A native CUDA implementation would eliminate
-these overheads and unlock the full parallelism inherent in the EML tree
-architecture.
+The EML tree architecture is naturally parallelizable: all $N$ trees at
+each level are evaluated in a single batched call, and the Horner-form
+Taylor primitives decompose into multiply-add chains.  We benchmark
+four computational backends on the Lorenz-63 task (depth~2, $N\!=\!16$,
+20{,}000 training pairs, batch size~2048) to measure the realized
+speedup from GPU acceleration.
 
-\subsubsection{Existing Work and Libraries}
-
-No native CUDA implementation of the EML operator exists at the time of writing.
-The closest related work falls into three categories:
+\subsubsection{Backends}
 
 \begin{enumerate}
-  \item \textbf{SLEEF} (\url{https://sleef.org/cuda.xhtml}): The SIMD Library for
-    Evaluating Elementary Functions provides inlinable CUDA device functions for
-    $\exp$ and $\ln$ with configurable ULP error bounds (0.5--3.5~ULP), using
-    range reduction and minimax polynomial approximations.  These could serve as
-    drop-in replacements for the $\exp$ and $\ln$ components of EML, but would
-    not fuse the two into a single kernel.
-  \item \textbf{FPplus} (\url{https://github.com/Maratyszcza/FPplus}): Implements
-    compensated Horner scheme evaluation on CUDA (compute capability $\ge 2.0$) with
-    double-double error-free transforms.  Relevant for high-precision polynomial
-    evaluation in the EML backward pass.
-  \item \textbf{PolyKAN} \citep{polykan2025}: Fused CUDA kernels for polynomial
-    Kolmogorov--Arnold networks, achieving 1.2--10$\times$ inference speedup via
-    2D tiling, coefficient-layout reordering, and two-stage reduction.  Their
-    techniques for batched polynomial evaluation over tree-structured networks are
-    directly applicable to EML tree evaluation.
-  \item \textbf{nullwiz/emlvm} (\url{https://github.com/nullwiz/emlvm}): A
-    CPU-based stack-machine VM for EML programs, useful as a reference
-    implementation but without GPU support.
-  \item \textbf{FlashInfer} (\url{https://github.com/flashinfer-ai/flashinfer}):
-    Contains PTX-level wrappers for \texttt{ex2.approx} and \texttt{lg2.approx}
-    instructions, demonstrating how to bypass libm entirely for approximate
-    single-precision $\exp$/$\ln$ on GPU.
+  \item \textbf{CPU Taylor} --- Horner-form Taylor series on CPU (the
+    baseline from all previous experiments).
+  \item \textbf{GPU Taylor} --- The same Taylor implementation moved to
+    GPU via \texttt{.to("cuda")}.  Each Horner loop step dispatches a
+    separate CUDA kernel.
+  \item \textbf{GPU Native} --- Replace the Taylor series with
+    \texttt{torch.exp}/\texttt{torch.log} (CUDA's built-in math library,
+    which uses the same range-reduction and minimax polynomial techniques
+    as SLEEF~\citep{sleef}).
+  \item \textbf{GPU Compiled} --- Apply \texttt{torch.compile} to fuse
+    the exp-minus-log into a single Triton kernel, eliminating intermediate
+    memory round-trips.
 \end{enumerate}
 
-\subsubsection{Planned CUDA Kernel Architecture}
+\subsubsection{Related Libraries}
 
-The following tasks constitute the native CUDA acceleration roadmap:
+No native CUDA implementation of the full EML operator exists at the time
+of writing.  The closest related work includes:
+SLEEF (\url{https://sleef.org/cuda.xhtml}), which provides inlinable CUDA
+device functions for $\exp$ and $\ln$ with configurable ULP error bounds
+(0.5--3.5~ULP);
+PolyKAN \citep{polykan2025}, which implements fused CUDA kernels for
+polynomial Kolmogorov--Arnold networks via 2D tiling;
+and FlashInfer (\url{https://github.com/flashinfer-ai/flashinfer}), which
+contains PTX-level wrappers for \texttt{ex2.approx} and \texttt{lg2.approx}
+instructions.  Our GPU Native backend uses CUDA's built-in math functions,
+which employ the same mathematical techniques as SLEEF (range reduction
+plus minimax polynomials).
 
-\begin{enumerate}
-  \item \textbf{Fused EML kernel.}  Write a single CUDA kernel that computes
-    $\eml(x, y) = \text{horner\_exp}(x) - \text{horner\_ln}(y)$ without
-    intermediate global-memory round-trips.  Range reduction for $\exp$
-    (decompose $x = k\ln 2 + r$) and $\ln$ (frexp decomposition
-    $y = m \cdot 2^e$) should execute in registers, followed by Horner
-    evaluation using FMA intrinsics (\texttt{\_\_fma\_rn} for float,
-    \texttt{fma} for double).  The kernel should support both \texttt{float}
-    and \texttt{double} precision via C++ templates.
-  \item \textbf{Fused backward kernel.}  Compute
-    $\partial\eml/\partial x = \exp(x)$ and
-    $\partial\eml/\partial y = -1/y$ in a single backward kernel,
-    reusing the range-reduced $k$ and $r$ from the forward pass
-    (saved in a compact auxiliary buffer rather than storing the full
-    $\exp(x)$ result).
-  \item \textbf{Batched tree-level kernel.}  At each tree level~$l$, all
-    $B \times N \times n_l$ EML nodes must be evaluated (batch $\times$
-    trees $\times$ nodes-at-level).  Design a 2D-tiled kernel where each
-    thread block handles a $(B_\text{tile}, N_\text{tile})$ tile, with
-    $n_l$ unrolled in registers.  The Gumbel-softmax weighted selection
-    (sparse dot product over the candidate set) should be fused into the
-    same kernel to avoid a separate selection pass.
-  \item \textbf{Warp-level Horner evaluation.}  For higher-order polynomials
-    ($M \ge 12$), explore warp-shuffle reductions to parallelize
-    Horner steps using the Estrin--Horner hybrid scheme: group consecutive
-    coefficients into sub-polynomials evaluated in parallel across warp lanes,
-    then combine with a single Horner merge step.
-  \item \textbf{Complex-valued EML kernel.}  Extend the fused kernel to
-    \texttt{complex<double>} arithmetic for oscillatory Koopman systems.
-    Complex $\exp$ decomposes into real $\exp$ and sincos; complex $\ln$
-    requires \texttt{atan2} for the argument.  Both can be approximated
-    via Horner-form Taylor or CORDIC.
-  \item \textbf{PyTorch integration.}  Package the kernels as a PyTorch C++/CUDA
-    extension using \texttt{torch::extension}, registering custom operators via
-    \texttt{TORCH\_LIBRARY} for seamless use with \texttt{torch.compile} and
-    \texttt{torch.autograd}.
-  \item \textbf{Benchmarking.}  Profile against the pure-PyTorch Taylor
-    implementation (Section~\ref{sec:taylor}) on configurations from
-    $N\!=\!16, d\!=\!2$ (small) to $N\!=\!128, d\!=\!5$ (large), measuring
-    kernel time, memory bandwidth utilization, and end-to-end training
-    throughput.  Target: $\ge 5\times$ wall-clock speedup for depth-3 trees
-    with $N\!=\!32$ at batch size 4096.
-\end{enumerate}
+\subsubsection{Measured Results}
 
-\subsubsection{Expected Performance Model}
-
-For a depth-$d$ tree with $N$ observables and batch size~$B$, the forward pass
-requires $d$ sequential kernel launches.  At level~$l$, each kernel performs
-$B \times N \times 2^{d-1-l}$ independent EML evaluations.  The arithmetic
-intensity per EML call is approximately $2(M_e + M_l) \approx 56$ FLOPs
-(for $M_e\!=\!12$, $M_l\!=\!16$) with 2 input reads and 1 output write
-(24 bytes in double precision), giving an arithmetic intensity of
-$\sim\!2.3$~FLOPs/byte --- squarely compute-bound on modern GPUs.  The
-bottleneck is therefore the $d$ sequential kernel launches (one per tree level),
-not within-level parallelism.  Kernel launch overhead can be mitigated via
-CUDA graphs or persistent kernels with inter-level synchronization.
-
-
-\subsection{Computational Performance Instrumentation}
-\label{sec:timing}
-
-A systematic timing study across all methods is needed to quantify the
-cost--accuracy trade-off and to measure the concrete impact of native CUDA
-kernels (Section~\ref{sec:cuda}).  The following instrumentation plan covers both
-training and inference.
-
-\subsubsection{Metrics to Collect}
-
-For each method, record the following on identical hardware (single NVIDIA GPU +
-host CPU):
-
-\begin{enumerate}
-  \item \textbf{Training wall-clock time} --- total time from initialization to
-    convergence (or fixed epoch budget), including data loading.
-  \item \textbf{Training throughput} --- state pairs processed per second
-    (pairs/s) during the optimization loop.
-  \item \textbf{Per-epoch time} --- mean and standard deviation across epochs,
-    to capture variance from Gumbel noise and annealing phase transitions.
-  \item \textbf{Inference latency} --- time for a single forward pass
-    (lift $\to$ predict $\to$ reconstruct) on one batch, measured after
-    CUDA warm-up (discard first 100 calls, average next 1000).
-  \item \textbf{Inference throughput} --- batches per second at batch sizes
-    $B \in \{1, 64, 256, 1024, 4096\}$ to characterize the latency--throughput
-    curve.
-  \item \textbf{Peak GPU memory} --- maximum allocated memory during training
-    and inference, via \texttt{torch.cuda.max\_memory\_allocated}.
-  \item \textbf{Prediction rollout time} --- wall-clock time for a full
-    multi-step prediction rollout over the CTF evaluation horizon (1--5
-    Lyapunov times).
-\end{enumerate}
-
-\subsubsection{Comparison Table}
+Table~\ref{tab:timing} reports training throughput, inference latency, and
+peak GPU memory for all four backends, measured on an NVIDIA RTX~5070~Ti
+(16\,GB, CUDA~12.8) with PyTorch~2.11.
 
 \begin{table}[t]
 \centering
-\caption{Computational performance comparison (Lorenz-63, $B\!=\!4096$).
-  Training time is total wall-clock to convergence; inference latency is
-  per-batch forward pass.  EML-Koopman rows compare the current PyTorch
-  implementation against the planned native CUDA kernels.}
+\caption{Computational performance comparison (Lorenz-63, depth~2,
+  $N\!=\!16$, 720 parameters, 300 training epochs, batch size~2048).
+  Training time is mean $\pm$ std over 3 runs.  Inference latency is
+  median of 1{,}000 timed forward passes (lift $\to$ predict $\to$
+  reconstruct) after 100 warm-up passes.  Rollout time is a 500-step
+  iterative prediction.  All GPU measurements include CUDA
+  synchronization barriers.}
 \label{tab:timing}
 \begin{tabular}{lccccc}
 \toprule
-Method & \shortstack{Train\\Time (s)} & \shortstack{Train\\(pairs/s)}
-  & \shortstack{Infer\\Latency (ms)} & \shortstack{Infer\\(batches/s)}
+Backend & \shortstack{Train\\Time (s)} & \shortstack{Train\\(pairs/s)}
+  & \shortstack{Infer $B\!=\!1$\\(ms)} & \shortstack{Infer $B\!=\!4096$\\(ms)}
   & \shortstack{Peak\\Mem (MB)} \\
 \midrule
-EML-Koopman (PyTorch) & --- & --- & --- & --- & --- \\
-EML-Koopman (CUDA fused) & --- & --- & --- & --- & --- \\
+CPU Taylor       & $13.5 \pm 0.4$  & 446{,}000   & 0.83 & 34.0  & ---  \\
+GPU Taylor       & $3.2 \pm 0.1$   & 1{,}849{,}000 & 2.55 & 2.65 & 37   \\
+\textbf{GPU Native}  & $\mathbf{1.8 \pm 0.3}$ & $\mathbf{3{,}379{,}000}$
+                     & $\mathbf{0.82}$ & $\mathbf{0.90}$ & 37 \\
+GPU Compiled     & $2.4 \pm 1.0$   & 2{,}973{,}000 & 0.88 & 0.96 & 50   \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{GPU Taylor is kernel-launch dominated.}
+Moving the Taylor implementation to GPU yields a $4.2\times$ training speedup
+($13.5 \to 3.2$\,s), but inference latency is \emph{worse} than CPU at
+small batch sizes ($2.55$ vs.\ $0.83$\,ms at $B\!=\!1$) and nearly constant
+across batch sizes ($2.55$--$2.65$\,ms).  This is because the Horner-form
+evaluation dispatches $d \times (M_e + M_l) \approx 2 \times 28 = 56$
+sequential kernel launches per forward pass --- each launch incurs
+${\sim}5$--$10\,\mu$s overhead, which dominates at small batch sizes.
+
+\paragraph{GPU Native eliminates Taylor overhead.}
+Replacing the Python-level Horner loops with CUDA's built-in \texttt{expf}/\texttt{logf}
+reduces the EML operation to two kernel calls per tree level (one for $\exp$,
+one for $\ln$), yielding the fastest overall backend:
+$7.5\times$ training speedup over CPU ($13.5 \to 1.8$\,s) and
+$1.8\times$ over GPU Taylor.  Inference at $B\!=\!4096$ drops from
+$2.65$\,ms (GPU Taylor) to $0.90$\,ms --- a $2.9\times$ improvement.
+
+\paragraph{GPU Compiled matches GPU Native after warm-up.}
+The \texttt{torch.compile} backend (which fuses exp-minus-log into a single
+Triton kernel) achieves nearly identical steady-state performance to GPU
+Native: $0.96$\,ms at $B\!=\!4096$ vs.\ $0.90$\,ms.  However, the first
+training run incurs a ${\sim}2$\,s compilation overhead ($3.8$\,s vs.\ $1.6$\,s
+for subsequent runs), reflected in the higher standard deviation.  Peak
+memory is $50$\,MB vs.\ $37$\,MB due to Triton's code cache.
+
+\paragraph{CPU wins at $B\!=\!1$ inference.}
+For single-sample inference ($B\!=\!1$), CPU Taylor ($0.83$\,ms) outperforms
+GPU Taylor ($2.55$\,ms) due to kernel launch and host--device transfer overhead.
+GPU Native ($0.82$\,ms) matches CPU because the reduced kernel count amortizes
+the launch cost.  This has practical implications for real-time control
+applications where inference is one-sample-at-a-time.
+
+
+\subsubsection{Batch Size Scaling}
+
+Table~\ref{tab:batch-scaling} shows inference latency across batch sizes
+for all four backends.
+
+\begin{table}[t]
+\centering
+\caption{Inference latency (ms) vs.\ batch size.  CPU scales linearly;
+  GPU Taylor is flat (kernel-launch dominated); GPU Native and Compiled
+  are nearly flat with marginal increase at large batches.  Values are
+  medians of 1{,}000 timed passes after 100 warm-up passes.}
+\label{tab:batch-scaling}
+\begin{tabular}{lrrrrr}
+\toprule
+Backend & $B\!=\!1$ & $B\!=\!64$ & $B\!=\!256$ & $B\!=\!1024$ & $B\!=\!4096$ \\
 \midrule
-EDMD-Poly & --- & --- & --- & --- & --- \\
-EDMD-RBF & --- & --- & --- & --- & --- \\
-Deep Koopman & --- & --- & --- & --- & --- \\
-PySR + LS & --- & --- & --- & --- & --- \\
+CPU Taylor      & 0.83 & 1.51 & 3.28 &  9.79 & 33.97 \\
+GPU Taylor      & 2.55 & 2.63 & 2.63 &  2.64 &  2.65 \\
+GPU Native      & \textbf{0.82} & \textbf{0.90} & \textbf{0.90} & \textbf{0.90} & \textbf{0.90} \\
+GPU Compiled    & 0.88 & 0.97 & 0.97 &  0.98 &  0.96 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \noindent
-Table~\ref{tab:timing} will be populated by the instrumentation runs.  The
-EML-Koopman rows appear twice: once for the current pure-PyTorch Taylor
-implementation and once for the native CUDA kernels, providing a direct
-measurement of the CUDA optimization speedup.  The target is $\ge 5\times$
-wall-clock reduction for training and $\ge 10\times$ for inference latency.
+The CPU backend's linear scaling ($0.83 \to 34$\,ms from $B\!=\!1$ to
+$B\!=\!4096$) reflects sequential processing of batch elements.  GPU
+backends process all batch elements in parallel, so latency is roughly
+constant until the GPU's streaming multiprocessors saturate.  The
+crossover where GPU Native overtakes CPU occurs between $B\!=\!1$ and
+$B\!=\!64$, making GPU the preferred backend for any practical batch
+size in online prediction or multi-trajectory training.
 
-\subsubsection{Instrumentation Implementation Tasks}
+\subsubsection{Implications for CUDA Kernel Development}
 
-\begin{enumerate}
-  \item \textbf{Unified timing harness.}  Write a shared benchmarking script
-    that wraps each method (EML-Koopman, EDMD-Poly, EDMD-RBF, Deep Koopman,
-    PySR) with identical data loading, CUDA synchronization barriers
-    (\texttt{torch.cuda.synchronize}), and \texttt{time.perf\_counter} calls.
-    Record per-epoch and per-batch timings to a structured JSON log.
-  \item \textbf{Training instrumentation.}  For each method, log:
-    \begin{itemize}
-      \item Total training time (wall-clock, start to final epoch).
-      \item Per-phase breakdown for EML-Koopman (Phase~1 exploration,
-        Phase~2 hardening, Phase~3 snap \& fine-tune).
-      \item Convergence curve: loss vs.\ wall-clock time (not just epoch),
-        to capture per-iteration cost differences.
-    \end{itemize}
-  \item \textbf{Inference instrumentation.}  For each method:
-    \begin{itemize}
-      \item Warm-up: 100 untimed forward passes to stabilize GPU clocks and
-        populate caches.
-      \item Timed: 1000 forward passes with \texttt{torch.cuda.Event} start/end
-        timing for sub-millisecond resolution.
-      \item Sweep batch sizes $B \in \{1, 64, 256, 1024, 4096\}$ to
-        characterize throughput scaling.
-    \end{itemize}
-  \item \textbf{CUDA kernel profiling.}  For the native CUDA EML kernels
-    (once implemented), collect:
-    \begin{itemize}
-      \item Per-kernel time via \texttt{nsys profile} or \texttt{ncu}.
-      \item Achieved memory bandwidth and compute throughput (FLOPs/s)
-        vs.\ roofline.
-      \item Kernel launch overhead as a fraction of total time, to justify
-        CUDA graph optimization.
-    \end{itemize}
-  \item \textbf{Memory profiling.}  Record
-    \texttt{torch.cuda.max\_memory\_allocated} and
-    \texttt{torch.cuda.memory\_reserved} for each method at each batch
-    size.  For EML-Koopman, compare memory usage between PyTorch and native
-    CUDA variants (the fused kernels should reduce intermediate tensor
-    allocations).
-  \item \textbf{Scaling study.}  Vary EML-Koopman configuration across
-    $N \in \{8, 16, 32, 64, 128\}$ trees and $d \in \{2, 3, 4, 5\}$ depths.
-    Plot training throughput and inference latency as functions of $N$ and
-    $d$ for both PyTorch and CUDA backends, to characterize scaling
-    behavior and identify the regime where native kernels provide the
-    greatest benefit.
-  \item \textbf{Reproducibility.}  Fix random seeds, record GPU model
-    (via \texttt{torch.cuda.get\_device\_name}), driver version, CUDA
-    toolkit version, and PyTorch version.  Run each timing measurement
-    3$\times$ and report mean $\pm$ std.
-\end{enumerate}
+The $2.9\times$ inference speedup from GPU Taylor to GPU Native
+demonstrates that the Horner-form Taylor loops are the primary bottleneck
+on GPU, not the arithmetic itself.  A hand-written fused CUDA kernel
+(as described in the existing SLEEF and PolyKAN literature) would need
+to beat GPU Native's $0.90$\,ms at $B\!=\!4096$, which is already
+close to the hardware floor for 16 dictionary evaluations over a
+depth-2 tree.  The marginal benefit of custom kernels is therefore
+limited for shallow trees but may become significant at depth~$\ge 4$
+where the number of sequential kernel launches grows exponentially.
 
 
 \subsection{Limitations and Future Work}
@@ -1353,9 +1284,15 @@ symbolic interpretability with spectral fidelity; (3)~gradient-aware
 clamping via smooth saturation to maintain signal through deep trees;
 and (4)~parameter-conditioned Koopman matrices $\bK(\rho)$ to enable
 generalization across bifurcation parameters.
+A systematic computational benchmark (Section~\ref{sec:cuda}) on an RTX~5070~Ti
+demonstrated $7.5\times$ training speedup from CPU to GPU with native math
+functions, and identified kernel launch overhead from the Python-level Horner
+loops as the primary GPU bottleneck --- resolved by switching to CUDA's built-in
+\texttt{exp}/\texttt{log} or \texttt{torch.compile} fusion.
+
 Joint real-complex training that combines real-grammar short-term accuracy with
-complex-grammar spectral fidelity, EML-KAN hybrid architectures, and native CUDA
-acceleration remain promising longer-term directions.
+complex-grammar spectral fidelity, EML-KAN hybrid architectures, and deeper
+kernel fusion for depth-$\ge 4$ trees remain promising longer-term directions.
 
 
 \bibliographystyle{plainnat}

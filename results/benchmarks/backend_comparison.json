@@ -1,0 +1,333 @@
+{
+  "metadata": {
+    "pytorch_version": "2.11.0+cu128",
+    "cuda_available": true,
+    "gpu_name": "NVIDIA GeForce RTX 5070 Ti",
+    "driver_version": "12.8",
+    "python_version": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "gpu_memory_mb": 17094.0
+  },
+  "benchmarks": {
+    "cpu_taylor": {
+      "device": "cpu",
+      "backend": "taylor",
+      "training": {
+        "train_time_s": 13.462,
+        "train_time_std": 0.424,
+        "per_epoch_ms": 44.87,
+        "pairs_per_sec": 446149,
+        "peak_mem_mb": 0.0,
+        "final_loss": 627.314209,
+        "runs": [
+          {
+            "run": 0,
+            "train_time_s": 14.055,
+            "per_epoch_ms": 46.85,
+            "pairs_per_sec": 426906,
+            "peak_mem_mb": 0.0,
+            "final_loss": 634.687439
+          },
+          {
+            "run": 1,
+            "train_time_s": 13.236,
+            "per_epoch_ms": 44.12,
+            "pairs_per_sec": 453300,
+            "peak_mem_mb": 0.0,
+            "final_loss": 655.053406
+          },
+          {
+            "run": 2,
+            "train_time_s": 13.094,
+            "per_epoch_ms": 43.65,
+            "pairs_per_sec": 458240,
+            "peak_mem_mb": 0.0,
+            "final_loss": 592.201782
+          }
+        ]
+      },
+      "inference": {
+        "B=1": {
+          "latency_ms_mean": 0.9106,
+          "latency_ms_std": 0.1576,
+          "latency_ms_p50": 0.8324,
+          "latency_ms_p99": 1.326,
+          "throughput_batches_per_sec": 1098.2
+        },
+        "B=64": {
+          "latency_ms_mean": 1.623,
+          "latency_ms_std": 0.2384,
+          "latency_ms_p50": 1.507,
+          "latency_ms_p99": 2.2171,
+          "throughput_batches_per_sec": 616.2
+        },
+        "B=256": {
+          "latency_ms_mean": 3.4765,
+          "latency_ms_std": 0.4555,
+          "latency_ms_p50": 3.2781,
+          "latency_ms_p99": 4.3553,
+          "throughput_batches_per_sec": 287.6
+        },
+        "B=1024": {
+          "latency_ms_mean": 10.0961,
+          "latency_ms_std": 1.0915,
+          "latency_ms_p50": 9.7924,
+          "latency_ms_p99": 12.1698,
+          "throughput_batches_per_sec": 99.0
+        },
+        "B=4096": {
+          "latency_ms_mean": 34.1243,
+          "latency_ms_std": 2.7068,
+          "latency_ms_p50": 33.9688,
+          "latency_ms_p99": 40.4348,
+          "throughput_batches_per_sec": 29.3
+        }
+      },
+      "rollout": {
+        "horizon": 500,
+        "rollout_ms_mean": 2.684,
+        "rollout_ms_std": 0.358
+      }
+    },
+    "gpu_taylor": {
+      "device": "cuda",
+      "backend": "taylor",
+      "training": {
+        "train_time_s": 3.249,
+        "train_time_std": 0.127,
+        "per_epoch_ms": 10.83,
+        "pairs_per_sec": 1849366,
+        "peak_mem_mb": 36.8,
+        "final_loss": 574.968445,
+        "runs": [
+          {
+            "run": 0,
+            "train_time_s": 3.429,
+            "per_epoch_ms": 11.43,
+            "pairs_per_sec": 1749623,
+            "peak_mem_mb": 36.8,
+            "final_loss": 494.102814
+          },
+          {
+            "run": 1,
+            "train_time_s": 3.164,
+            "per_epoch_ms": 10.55,
+            "pairs_per_sec": 1896471,
+            "peak_mem_mb": 36.8,
+            "final_loss": 744.253906
+          },
+          {
+            "run": 2,
+            "train_time_s": 3.155,
+            "per_epoch_ms": 10.52,
+            "pairs_per_sec": 1902003,
+            "peak_mem_mb": 36.8,
+            "final_loss": 486.548615
+          }
+        ]
+      },
+      "inference": {
+        "B=1": {
+          "latency_ms_mean": 2.5748,
+          "latency_ms_std": 0.153,
+          "latency_ms_p50": 2.5532,
+          "latency_ms_p99": 3.1098,
+          "throughput_batches_per_sec": 388.4
+        },
+        "B=64": {
+          "latency_ms_mean": 2.6472,
+          "latency_ms_std": 0.0883,
+          "latency_ms_p50": 2.6347,
+          "latency_ms_p99": 2.9569,
+          "throughput_batches_per_sec": 377.8
+        },
+        "B=256": {
+          "latency_ms_mean": 2.6484,
+          "latency_ms_std": 0.0927,
+          "latency_ms_p50": 2.6339,
+          "latency_ms_p99": 2.9851,
+          "throughput_batches_per_sec": 377.6
+        },
+        "B=1024": {
+          "latency_ms_mean": 2.6537,
+          "latency_ms_std": 0.0998,
+          "latency_ms_p50": 2.6379,
+          "latency_ms_p99": 3.0972,
+          "throughput_batches_per_sec": 376.8
+        },
+        "B=4096": {
+          "latency_ms_mean": 2.6628,
+          "latency_ms_std": 0.1141,
+          "latency_ms_p50": 2.6461,
+          "latency_ms_p99": 3.094,
+          "throughput_batches_per_sec": 375.5
+        }
+      },
+      "rollout": {
+        "horizon": 500,
+        "rollout_ms_mean": 9.311,
+        "rollout_ms_std": 0.332
+      }
+    },
+    "gpu_native": {
+      "device": "cuda",
+      "backend": "native",
+      "training": {
+        "train_time_s": 1.818,
+        "train_time_std": 0.294,
+        "per_epoch_ms": 6.06,
+        "pairs_per_sec": 3379107,
+        "peak_mem_mb": 36.8,
+        "final_loss": 624.62148,
+        "runs": [
+          {
+            "run": 0,
+            "train_time_s": 2.234,
+            "per_epoch_ms": 7.45,
+            "pairs_per_sec": 2686194,
+            "peak_mem_mb": 36.8,
+            "final_loss": 559.821411
+          },
+          {
+            "run": 1,
+            "train_time_s": 1.604,
+            "per_epoch_ms": 5.35,
+            "pairs_per_sec": 3740223,
+            "peak_mem_mb": 36.8,
+            "final_loss": 748.327881
+          },
+          {
+            "run": 2,
+            "train_time_s": 1.617,
+            "per_epoch_ms": 5.39,
+            "pairs_per_sec": 3710903,
+            "peak_mem_mb": 36.8,
+            "final_loss": 565.715149
+          }
+        ]
+      },
+      "inference": {
+        "B=1": {
+          "latency_ms_mean": 0.8314,
+          "latency_ms_std": 0.0428,
+          "latency_ms_p50": 0.8242,
+          "latency_ms_p99": 0.9832,
+          "throughput_batches_per_sec": 1202.7
+        },
+        "B=64": {
+          "latency_ms_mean": 0.9075,
+          "latency_ms_std": 0.0435,
+          "latency_ms_p50": 0.8993,
+          "latency_ms_p99": 1.0947,
+          "throughput_batches_per_sec": 1102.0
+        },
+        "B=256": {
+          "latency_ms_mean": 0.9086,
+          "latency_ms_std": 0.0457,
+          "latency_ms_p50": 0.9003,
+          "latency_ms_p99": 1.1114,
+          "throughput_batches_per_sec": 1100.7
+        },
+        "B=1024": {
+          "latency_ms_mean": 0.911,
+          "latency_ms_std": 0.0472,
+          "latency_ms_p50": 0.9018,
+          "latency_ms_p99": 1.099,
+          "throughput_batches_per_sec": 1097.7
+        },
+        "B=4096": {
+          "latency_ms_mean": 0.9149,
+          "latency_ms_std": 0.0864,
+          "latency_ms_p50": 0.8991,
+          "latency_ms_p99": 1.2453,
+          "throughput_batches_per_sec": 1093.1
+        }
+      },
+      "rollout": {
+        "horizon": 500,
+        "rollout_ms_mean": 7.492,
+        "rollout_ms_std": 0.079
+      }
+    },
+    "gpu_compiled": {
+      "device": "cuda",
+      "backend": "compiled",
+      "training": {
+        "train_time_s": 2.354,
+        "train_time_std": 1.015,
+        "per_epoch_ms": 7.84,
+        "pairs_per_sec": 2972851,
+        "peak_mem_mb": 50.2,
+        "final_loss": 624.62148,
+        "runs": [
+          {
+            "run": 0,
+            "train_time_s": 3.79,
+            "per_epoch_ms": 12.63,
+            "pairs_per_sec": 1583300,
+            "peak_mem_mb": 76.9,
+            "final_loss": 559.821411
+          },
+          {
+            "run": 1,
+            "train_time_s": 1.639,
+            "per_epoch_ms": 5.46,
+            "pairs_per_sec": 3661670,
+            "peak_mem_mb": 36.8,
+            "final_loss": 748.327881
+          },
+          {
+            "run": 2,
+            "train_time_s": 1.633,
+            "per_epoch_ms": 5.44,
+            "pairs_per_sec": 3673583,
+            "peak_mem_mb": 36.8,
+            "final_loss": 565.715149
+          }
+        ]
+      },
+      "inference": {
+        "B=1": {
+          "latency_ms_mean": 0.8903,
+          "latency_ms_std": 0.0428,
+          "latency_ms_p50": 0.881,
+          "latency_ms_p99": 1.0767,
+          "throughput_batches_per_sec": 1123.2
+        },
+        "B=64": {
+          "latency_ms_mean": 0.9766,
+          "latency_ms_std": 0.0539,
+          "latency_ms_p50": 0.9673,
+          "latency_ms_p99": 1.1641,
+          "throughput_batches_per_sec": 1024.0
+        },
+        "B=256": {
+          "latency_ms_mean": 0.9916,
+          "latency_ms_std": 0.0918,
+          "latency_ms_p50": 0.9695,
+          "latency_ms_p99": 1.3523,
+          "throughput_batches_per_sec": 1008.4
+        },
+        "B=1024": {
+          "latency_ms_mean": 0.9896,
+          "latency_ms_std": 0.0503,
+          "latency_ms_p50": 0.9796,
+          "latency_ms_p99": 1.2266,
+          "throughput_batches_per_sec": 1010.5
+        },
+        "B=4096": {
+          "latency_ms_mean": 0.9914,
+          "latency_ms_std": 0.1268,
+          "latency_ms_p50": 0.9647,
+          "latency_ms_p99": 1.4218,
+          "throughput_batches_per_sec": 1008.6
+        }
+      },
+      "rollout": {
+        "horizon": 500,
+        "rollout_ms_mean": 7.604,
+        "rollout_ms_std": 0.134
+      }
+    }
+  }
+}

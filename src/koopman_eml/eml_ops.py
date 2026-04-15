@@ -139,9 +139,27 @@ def eml(
     exp_order: int = 12,
     ln_order: int = 16,
     use_complex: bool = False,
+    backend: str = "taylor",
 ) -> torch.Tensor:
-    """Vectorized EML(x, y) = exp(x) - ln(y) via Taylor approximations."""
-    return _EMLOp.apply(x, y, exp_order, ln_order, use_complex)
+    """Vectorized EML(x, y) = exp(x) - ln(y).
+
+    Parameters
+    ----------
+    backend : {"taylor", "native", "compiled"}
+        "taylor"   -- Horner-form Taylor series (default, works on CPU+GPU)
+        "native"   -- torch.exp / torch.log (no Taylor, GPU benefits)
+        "compiled" -- torch.compile-fused Triton kernel (best GPU perf)
+    """
+    if backend == "taylor":
+        return _EMLOp.apply(x, y, exp_order, ln_order, use_complex)
+    elif backend == "native":
+        from koopman_eml.eml_cuda_ext import eml_native
+        return eml_native(x, y)
+    elif backend == "compiled":
+        from koopman_eml.eml_cuda_ext import eml_compiled
+        return eml_compiled(x, y)
+    else:
+        raise ValueError(f"Unknown EML backend: {backend!r}")
 
 
 # ---------------------------------------------------------------------------

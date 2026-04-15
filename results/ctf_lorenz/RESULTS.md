@@ -273,6 +273,64 @@ means single-run comparisons should be interpreted cautiously. Trends
 across multiple configurations (e.g., depth collapse, mixed dict advantage)
 are robust.
 
+## Computational Backend Benchmark
+
+**Hardware:** NVIDIA RTX 5070 Ti (16 GB), PyTorch 2.11.0+cu128, Windows 11
+**Configuration:** depth 2, N=16 (720 params), 300 training epochs, batch_size=2048
+**Data:** 20,000 Lorenz training pairs
+
+### Training Performance
+
+| Backend | Train Time (s) | Pairs/s | Per-Epoch (ms) | Peak Mem (MB) |
+|---------|:-:|:-:|:-:|:-:|
+| CPU Taylor | 13.5 ± 0.4 | 446,000 | 44.9 | — |
+| GPU Taylor | 3.2 ± 0.1 | 1,849,000 | 10.8 | 37 |
+| **GPU Native** | **1.8 ± 0.3** | **3,379,000** | **6.1** | **37** |
+| GPU Compiled | 2.4 ± 1.0 | 2,973,000 | 7.8 | 50 |
+
+### Inference Latency (ms, median of 1000 passes)
+
+| Backend | B=1 | B=64 | B=256 | B=1024 | B=4096 |
+|---------|:-:|:-:|:-:|:-:|:-:|
+| CPU Taylor | 0.83 | 1.51 | 3.28 | 9.79 | 33.97 |
+| GPU Taylor | 2.55 | 2.63 | 2.63 | 2.64 | 2.65 |
+| **GPU Native** | **0.82** | **0.90** | **0.90** | **0.90** | **0.90** |
+| GPU Compiled | 0.88 | 0.97 | 0.97 | 0.98 | 0.96 |
+
+### Rollout (500 steps, 10 runs)
+
+| Backend | Rollout Time (ms) |
+|---------|:-:|
+| CPU Taylor | 2.68 ± 0.36 |
+| GPU Taylor | 9.31 ± 0.33 |
+| GPU Native | 7.49 ± 0.08 |
+| GPU Compiled | 7.60 ± 0.13 |
+
+### Backend Analysis
+
+25. **GPU Native is the fastest overall backend.** It achieves 7.5x training
+    speedup over CPU (13.5s → 1.8s) and 1.8x over GPU Taylor (3.2s → 1.8s),
+    with identical memory footprint (37 MB).
+
+26. **GPU Taylor is kernel-launch dominated.** Inference latency is nearly
+    constant across batch sizes (2.55–2.65 ms) — slower than CPU at B=1
+    (2.55 vs 0.83 ms). The Horner-form Taylor loops dispatch ~56 sequential
+    CUDA kernel launches per forward pass; launch overhead dominates.
+
+27. **GPU Compiled (torch.compile + Triton) matches GPU Native after warm-up.**
+    Steady-state performance is within 10% of GPU Native. First-run compilation
+    adds ~2s overhead and 13 MB extra memory for the Triton code cache.
+
+28. **CPU wins at B=1 inference and rollouts.** Single-sample inference on CPU
+    (0.83 ms) matches GPU Native (0.82 ms) and beats GPU Taylor (2.55 ms).
+    CPU rollouts are 3.5x faster (2.68 ms vs 9.31 ms) because the 500-step
+    sequential prediction loop does not benefit from GPU parallelism, and
+    the host↔device synchronization overhead accumulates.
+
+29. **GPU Native is the recommended backend for training and batch inference.**
+    It achieves 3.4M pairs/s training throughput and sub-millisecond inference
+    at all batch sizes, with no compilation overhead or extra memory usage.
+
 ## Best EML-Koopman Configurations
 
 ### Real-only (highest E1)

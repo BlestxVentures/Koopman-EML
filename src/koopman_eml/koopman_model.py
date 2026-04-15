@@ -46,6 +46,7 @@ class KoopmanEML(nn.Module):
         self.use_complex = use_complex
         self.allow_imaginary_vars = allow_imaginary_vars
         self.clamp_input = clamp_input
+        self.backend = "taylor"
 
         self._mixed = use_complex and n_complex_trees is not None and n_complex_trees < n_observables
         if self._mixed:
@@ -92,15 +93,18 @@ class KoopmanEML(nn.Module):
             g_real = self.dict_real(
                 x, tau=tau, exp_order=self.exp_order, ln_order=self.ln_order,
                 use_complex=False, clamp_input=self.clamp_input,
+                backend=self.backend,
             )
             g_cplx = self.dict_complex(
                 x, tau=tau, exp_order=self.exp_order, ln_order=self.ln_order,
                 use_complex=True, clamp_input=self.clamp_input,
+                backend=self.backend,
             )
             return torch.cat([g_real.to(g_cplx.dtype), g_cplx], dim=-1)
         return self.dictionary(
             x, tau=tau, exp_order=self.exp_order, ln_order=self.ln_order,
             use_complex=self.use_complex, clamp_input=self.clamp_input,
+            backend=self.backend,
         )
 
     def predict(self, g: torch.Tensor) -> torch.Tensor:

@@ -63,10 +63,12 @@ class EMLNode(nn.Module):
         exp_order: int = 12,
         ln_order: int = 16,
         use_complex: bool = False,
+        backend: str = "taylor",
     ) -> torch.Tensor:
         left_in = self.route(self.left_logits, const_one, x_vars, f_left_child, tau)
         right_in = self.route(self.right_logits, const_one, x_vars, f_right_child, tau)
-        return eml(left_in, right_in, exp_order=exp_order, ln_order=ln_order, use_complex=use_complex)
+        return eml(left_in, right_in, exp_order=exp_order, ln_order=ln_order,
+                   use_complex=use_complex, backend=backend)
 
 
 class EMLTree(nn.Module):
@@ -192,6 +194,7 @@ class EMLTreeVectorized(nn.Module):
         ln_order: int = 16,
         use_complex: bool = False,
         clamp_input: float = 5.0,
+        backend: str = "taylor",
     ) -> torch.Tensor:
         """Bottom-up evaluation.  x: [B, n_vars] -> returns [B, n_trees]."""
         if x.dim() == 1:
@@ -271,7 +274,7 @@ class EMLTreeVectorized(nn.Module):
             prev_outputs = eml(
                 eml_x, eml_y,
                 exp_order=exp_order, ln_order=ln_order,
-                use_complex=_complex,
+                use_complex=_complex, backend=backend,
             )
 
         return prev_outputs.squeeze(-1)
