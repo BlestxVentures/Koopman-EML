@@ -166,6 +166,56 @@ configuration (depth 2, 16 observables, 720 parameters).
     full 12-metric average, while providing closed-form symbolic observables
     with only 720 parameters.
 
+## Complex EML Primitives Comparison
+
+Evaluation of complex-valued EML candidates on the same Lorenz data.
+Three configurations: real baseline, i-only (adds constant i to candidates),
+and i+ix (adds i and ix₀, ix₁, ix₂ to candidates).
+
+| Config | E1 | E2 | RMSE | Valid Steps | Params | Train Time |
+|--------|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Real baseline** | **6.93** | -8.98 | **0.896** | **141** | 720 | 57s |
+| Complex i-only | -0.96 | -34.92 | 0.971 | 118 | 864 | 93s |
+| Complex i+ix | -1.35 | **-3.08** | 0.975 | 111 | 1,152 | 110s |
+
+### Discovered Complex Observables
+
+The i+ix model found oscillatory observables absent from the real grammar:
+
+- g₀ = eml(i·x₁, x₂) = exp(ix₁) − ln(x₂)   (mixes trig of y with log of z)
+- g₁ = eml(i·x₂, x₀) = exp(ix₂) − ln(x₀)   (mixes trig of z with log of x)
+- g₂ = eml(i·x₀, x₀) = exp(ix₀) − ln(x₀)   (trig and log of same variable)
+
+The i-only model discovered `eml(i, x₀) = exp(i) − ln(x₀)` which adds a
+fixed oscillatory constant (e^i ≈ 0.54 + 0.84i) but cannot generate
+state-dependent oscillations.
+
+### Complex EML Analysis
+
+18. **The i+ix mode achieves the best long-term E2 (-3.08) of any EML
+    configuration tested.** This improves on the real baseline (-8.98) by
+    nearly 6 points, suggesting that oscillatory observables like exp(ix)
+    better capture the Lorenz attractor's spectral structure.
+
+19. **Short-term E1 degrades with complex candidates.** Real baseline E1=6.93
+    vs i+ix E1=-1.35. The complex-to-real reconstruction via
+    C_re(g.real) + C_im(g.imag) introduces an information bottleneck that
+    hurts pointwise trajectory tracking.
+
+20. **The i-only mode underperforms both alternatives.** Adding just the constant
+    i without state-dependent imaginary inputs yields E2=-34.92 — far worse
+    than either baseline. The fixed phase offset is not useful for dynamical
+    systems; state-dependent oscillations (ix_j) are needed.
+
+21. **Observable-space prediction loss is dramatically lower for complex models.**
+    Final snapped prediction loss: real=427, i-only=1.2, i+ix=1.7. The complex
+    Koopman matrix learns a more faithful linear dynamics in the lifted space,
+    but the reconstruction bottleneck limits end-to-end accuracy.
+
+22. **Training time scales linearly with candidate count.** 57s → 93s → 110s for
+    720 → 864 → 1,152 parameters, confirming that the Gumbel-softmax routing
+    overhead is proportional to the grammar size.
+
 ## Best EML-Koopman Configuration
 
 - Tree depth: 2

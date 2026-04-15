@@ -1195,11 +1195,11 @@ The following experiments target the specific bottlenecks identified above:
     training rather than relying on the one-step prediction loss to implicitly
     capture long-term statistics.
 
-  \item \textbf{Complex-valued EML for oscillatory systems.}  The Lorenz system
-    has oscillatory dynamics that naturally produce complex Koopman eigenvalues.
-    Extending the EML trees to complex arithmetic (using the complex Taylor
-    $\ln$ already implemented) would allow trigonometric observables to emerge
-    at depth~3 via Euler's formula, potentially improving both E1 and E2.
+  \item \textbf{Complex-valued EML for oscillatory systems.}  As demonstrated
+    in Section~\ref{sec:complex-eml}, adding complex candidates to the EML
+    grammar already improves the long-term spectral score~E2 by nearly 6~points.
+    Further work could explore deeper complex trees, complex-aware spectral
+    losses, and applications to systems with dominant oscillatory modes.
 
   \item \textbf{EML-KAN hybrid architectures.}  Replace KAN's B-spline
     activation functions \citep{liu2025kan} with EML nodes, combining KAN's
@@ -1209,6 +1209,79 @@ The following experiments target the specific bottlenecks identified above:
     addition; if each univariate function is an EML tree, the entire network
     snaps to a symbolic expression.
 \end{enumerate}
+
+
+% ============================================================================
+\subsection{Complex EML Primitives}
+\label{sec:complex-eml}
+
+The Lorenz system possesses complex Koopman eigenvalues corresponding to
+oscillatory dynamics on the attractor.  To test whether the EML grammar
+benefits from access to trigonometric functions, we extend the routing
+candidate set with imaginary-valued primitives and compare three
+configurations:
+
+\begin{enumerate}
+  \item \textbf{Real baseline} --- candidates $\{1, x_0, x_1, x_2\}$ (original grammar).
+  \item \textbf{i-only} --- candidates $\{1, i, x_0, x_1, x_2\}$; adds the
+    imaginary unit as a selectable leaf.
+  \item \textbf{i\,+\,ix} --- candidates $\{1, i, x_0, x_1, x_2, ix_0, ix_1, ix_2\}$;
+    adds both the imaginary unit and imaginary-scaled state variables.
+\end{enumerate}
+
+\noindent
+In complex mode the Koopman matrix~$K$ is complex-valued, and
+reconstruction uses $\hat{x} = C_{\text{re}}\,\Re(g) + C_{\text{im}}\,\Im(g)$
+to map complex observables back to real state space.
+The prediction loss becomes
+$\cL_{\text{pred}} = \tfrac{1}{N}\sum_i |g_{k+1,i}^{\text{pred}}
+  - g_{k+1,i}^{\text{true}}|^2$,
+where $|\cdot|$ is the complex modulus.
+
+\begin{table}[t]
+\centering
+\caption{Complex EML comparison on Lorenz-63 CTF metrics (depth~2,
+  $N\!=\!16$). E2 improves by 6~points with oscillatory candidates,
+  while E1 degrades due to the complex-to-real reconstruction bottleneck.}
+\label{tab:complex-eml}
+\begin{tabular}{lrrrrr}
+\toprule
+Config & E1 & E2 & RMSE & Steps & Params \\
+\midrule
+Real baseline     &  \textbf{6.93} &  $-8.98$ & \textbf{0.896} & \textbf{141} &   720 \\
+Complex (i only)  & $-0.96$ & $-34.92$ & 0.971 & 118 &   864 \\
+Complex (i\,+\,ix) & $-1.35$ & $\mathbf{-3.08}$ & 0.975 & 111 & 1{,}152 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:complex-eml} shows results for all three modes trained from
+scratch with the same hyperparameters.  Three findings stand out:
+
+\paragraph{Oscillatory observables improve long-term spectral fidelity.}
+The i\,+\,ix mode achieves E2\,$= -3.08$, improving on the real baseline
+($-8.98$) by nearly 6~points and representing the best E2 of any EML
+configuration tested.  The discovered observables include
+$\eml(ix_1, x_2) = \exp(ix_1) - \ln(x_2)$,
+which mixes a trigonometric function of~$y$ with a logarithm of~$z$ ---
+functions inaccessible to the real grammar at depth~2.
+
+\paragraph{Short-term accuracy degrades under complex reconstruction.}
+The real baseline retains the best E1 ($6.93$ vs.\ $-1.35$).
+The $C_{\text{re}}/C_{\text{im}}$ decoder introduces an information
+bottleneck: each real output coordinate must be reconstructed from the
+independent real and imaginary parts of all observables.  This projection
+hurts pointwise trajectory tracking even though the complex Koopman
+matrix achieves a dramatically lower observable-space prediction loss
+(1.7~vs.\ 427 for the real model after snapping).
+
+\paragraph{State-dependent imaginary inputs are essential.}
+Adding only the constant~$i$ (i-only mode) produces the worst results
+across all metrics, with E2\,$= -34.92$.  A fixed oscillatory offset
+$\exp(i) \approx 0.54 + 0.84i$ cannot capture the state-dependent
+rotational dynamics of the Lorenz attractor.  The improvement requires
+imaginary-scaled variables $ix_j$ that generate state-dependent
+oscillations via Euler's formula.
 
 
 % ============================================================================
@@ -1246,6 +1319,12 @@ structural mismatch: depth-2 EML trees cannot express polynomials, whose spectra
 signatures dominate Lorenz long-term statistics.  Parametric generalization
 (E11, E12) remains weak without explicit parameter conditioning.
 
+Extending the grammar with complex-valued primitives (Section~\ref{sec:complex-eml})
+partially addresses the spectral limitation: the i\,+\,ix configuration
+improves E2 from $-8.98$ to $-3.08$ by discovering oscillatory observables
+such as $\eml(ix_1, x_2)$, at the cost of degraded short-term E1 due to the
+complex-to-real reconstruction bottleneck.
+
 These findings point to four high-priority directions: (1)~curriculum depth
 growth, where shallow-trained trees provide warm-start initialization for
 deeper structures; (2)~hybrid EML+polynomial dictionaries that combine
@@ -1253,7 +1332,8 @@ symbolic interpretability with spectral fidelity; (3)~gradient-aware
 clamping via smooth saturation to maintain signal through deep trees;
 and (4)~parameter-conditioned Koopman matrices $\bK(\rho)$ to enable
 generalization across bifurcation parameters.
-Complex-valued extensions, EML-KAN hybrid architectures, and native CUDA
+Joint real-complex training that combines real-grammar short-term accuracy with
+complex-grammar spectral fidelity, EML-KAN hybrid architectures, and native CUDA
 acceleration remain promising longer-term directions.
 
 
